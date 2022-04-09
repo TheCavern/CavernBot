@@ -1,3 +1,5 @@
+from disco.bot.command import CommandEvent
+
 from CavernBot.constants import Constants
 from CavernBot.database import init_db
 from disco.bot import Bot, Plugin
@@ -18,27 +20,26 @@ class CorePlugin(Plugin):
         if command_name == 'suggestion':
             area = None
             description = None
-            examples = None
+            example = None
 
-            print(len(event.data.options))
+            # print(event.raw_data)
 
-            print(event.data.to_dict())
+            for option in event.raw_data['interaction']['data']['options']:
+                if option['name'] == 'area':
+                    area = option['value']
+                if option['name'] == 'description':
+                    description = option['value']
 
-            for option in event.data.options:
-                print(option.name)
-                print(option.value)
-                if option.name == 'area':
-                    area = option.value
-                if option.name == 'description':
-                    description = option.value
-                if option.name == 'examples':
-                    examples = option.value
+            data = event.raw_data['interaction']['data']
+            if data.get('resolved'):
+                for k in data['resolved']['attachments']:
+                    example = data['resolved']['attachments'][k]['url']
+                    break
 
-            content = f"Area: {area}\nDescription: {description}"
-
-            self.bot.client.api.interactions_create(event.id, event.token, 4, {"content": content})
-
-
+            self.bot.plugins['SuggestionsPlugin'].commands[0].func(event, area, description, example)
+            # content = f"Area: {area}\nDescription: {description}"
+            #
+            # self.bot.client.api.interactions_create(event.id, event.token, 4, {"content": content})
 
         # # Grab the list of commands
         # commands = list(self.bot.get_commands_for_message(
