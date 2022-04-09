@@ -1,0 +1,45 @@
+{
+  "commands": [
+    {
+      "name": "suggestion",
+      "description": "Suggest things for the server!",
+      "options": [
+        {
+          "type": 3,
+          "name": "Area",
+          "required": true,
+          "choices": [
+            {
+              "name": "Lobby",
+              "value": "lobby"
+            },
+            {
+              "name": "Towny",
+              "value": "towny"
+            },
+            {
+              "name": "Forums",
+              "value": "forums"
+            },
+            {
+              "name": "Discord",
+              "value": "discord"
+            }
+          ]
+        },
+        {
+          "type": 3,
+          "name": "Description",
+          "description": "A description about your suggestion.",
+          "required": true
+        },
+        {
+          "type": 11,
+          "name": "Examples",
+          "description": "Examples of your suggestion to help enforce your idea.",
+          "required": false
+        }
+      ]
+    }
+  ]
+}
