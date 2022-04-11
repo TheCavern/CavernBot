@@ -1,7 +1,4 @@
 import re
-from disco.bot.command import CommandEvent
-
-from CavernBot.constants import Constants
 from disco.bot import Bot, Plugin
 
 SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
@@ -25,6 +22,19 @@ class CorePlugin(Plugin):
 
         command_name = event.data.name
 
+        if command_name == 'deny':
+            sid = None
+            reason = None
+
+            for option in event.data.options:
+                if option.name == 'id':
+                    sid = option.value
+                if option.name == 'reason':
+                    reason = option.value
+
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
+            cmd.func(event, sid, reason=reason)
+
         if command_name == 'suggestion':
             area = None
             description = None
@@ -41,54 +51,6 @@ class CorePlugin(Plugin):
                     example = event.data.resolved.attachments.get(k).url
                     break
 
-            self.bot.plugins['SuggestionsPlugin'].commands[0].func(event, area, description, example)
-
-        # # Grab the list of commands
-        # commands = list(self.bot.get_commands_for_message(
-        #     False, {}, guild.prefix, event.message
-        # ))
-        #
-        # # Sorry, nothing to see here :C
-        # if not len(commands):
-        #     return
-        #
-        # for command, match in commands:
-        #
-        #     if command.name == 'settings' and len(commands) > 1:
-        #         continue
-        #
-        #     needed_level = 0
-        #     if command.level:
-        #         needed_level = command.level
-        #
-        #     cooldown = 0
-        #
-        #     if hasattr(command.plugin, 'game'):
-        #         if not guild.check_if_listed(game_checker(command.plugin.game), 'enabled'):
-        #             return
-        #
-        #     if command.level == -1 and not event.bot_admin:
-        #         return
-        #
-        #     if not event.bot_admin and event.user_level < needed_level:
-        #         continue
-        #
-        #     try:
-        #         command_event = CommandEvent(command, event.message, match)
-        #         command_event.bot_admin = event.bot_admin
-        #         command_event.user_level = event.user_level
-        #         command_event.db_user = user_obj
-        #         command_event.db_guild = guild
-        #         if command.args:
-        #             if len(command_event.args) < command.args.required_length:
-        #                 self.dis_cmd_help(command, command_event, event, guild)
-        #                 return
-        #         command.plugin.execute(command_event)
-        #     except:
-        #         self.log.exception('Command error:')
-        #         return event.reply('It seems that an error has occured! :(')
-        # if new_setup:
-        #     event.message.reply(
-        #         'Hey! I\'ve noticed that I\'m new to the server and have no config, please check out `{}settings` to edit and setup the bot.'.format(
-        #             guild.prefix))
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
+            cmd.func(event, area, description, example)
         return

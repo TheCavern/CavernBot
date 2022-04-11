@@ -3,6 +3,7 @@
     {
       "name": "suggestion",
       "description": "Suggest things for the server!",
+      "default_permission": true,
       "options": [
         {
           "type": 3,
@@ -44,16 +45,48 @@
     {
       "name": "deny",
       "description": "Denies a suggestion",
+      "default_permission": false,
       "options": [
         {
           "type": 4,
-          "name": "Suggestion ID",
+          "name": "id",
+          "description": "The Suggestion ID",
           "required": true
+        },
         {
           "type": 3,
-          "name": "Reason",
+          "name": "reason",
           "description": "The reason you are denying this suggestion. NOT NEEDED!!!",
           "required": false
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "id": 963210867367878696,
+      "application_id": 600927461462769680,
+      "guild_id": 702144279807656038,
+      "permissions": [
+        {
+          "id": 702148481342505030,
+          "type": 1,
+          "permission": true
+        },
+        {
+          "id": 702163797036498964,
+          "type": 1,
+          "permission": true
+        },
+        {
+          "id": 702163989286617129,
+          "type": 1,
+          "permission": true
+        },
+        {
+          "id": 704764801385234502,
+          "type": 1,
+          "permission": true
         }
       ]
     }
