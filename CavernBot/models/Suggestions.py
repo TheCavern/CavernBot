@@ -1,20 +1,19 @@
 from peewee import IntegerField, BigIntegerField, TextField, DateTimeField
 from datetime import datetime
 
-from CavernBot.database import CavernBot
+from CavernBot.database import Base
 
 
-class Suggestion(CavernBot):
+@Base.register
+class Suggestion(Base):
     class Meta:
         table_name = 'suggestions'
 
     user_id = BigIntegerField()
     area = TextField()
     description = TextField()
+    type = IntegerField(default=0)
     approving_moderator = BigIntegerField(null=True)
-    votes = IntegerField()
+    upvotes = IntegerField(default=0)
+    downvotes = IntegerField(default=0)
     created_at = DateTimeField(default=datetime.utcnow)
-
-    @classmethod
-    def create_suggestion(cls, event, member, area, description):
-        pass

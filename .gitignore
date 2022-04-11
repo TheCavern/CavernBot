@@ -4,3 +4,4 @@ config.yaml
 src
 CavernBot/__pycache__
 CavernBot/plugins/__pycache__
+CavernBot/models/__pycache__

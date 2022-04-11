@@ -1,19 +1,27 @@
+import re
 from disco.bot.command import CommandEvent
 
 from CavernBot.constants import Constants
-from CavernBot.database import init_db
 from disco.bot import Bot, Plugin
+
+SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
 
 
 class CorePlugin(Plugin):
     def load(self, ctx):
-        # init_db()
-
         super(CorePlugin, self).load(ctx)
 
     # Basic command handler
     @Plugin.listen('InteractionCreate')
     def on_interaction_create(self, event):
+
+        if event.type == 3:
+            if hasattr(event.data, 'custom_id'):
+                if event.data.custom_id.startswith('deny_') or event.data.custom_id.startswith('approve_'):
+                    idata = SUGGESTION_RE.findall(event.data.custom_id)
+                    mode, id = idata[0][0], int(idata[0][1])
+
+                    self.bot.plugins['SuggestionsPlugin'].handle_button(event, mode, id)
 
         command_name = event.data.name
 
@@ -22,24 +30,18 @@ class CorePlugin(Plugin):
             description = None
             example = None
 
-            # print(event.raw_data)
+            for option in event.data.options:
+                if option.name == 'area':
+                    area = option.value
+                if option.name == 'description':
+                    description = option.value
 
-            for option in event.raw_data['interaction']['data']['options']:
-                if option['name'] == 'area':
-                    area = option['value']
-                if option['name'] == 'description':
-                    description = option['value']
-
-            data = event.raw_data['interaction']['data']
-            if data.get('resolved'):
-                for k in data['resolved']['attachments']:
-                    example = data['resolved']['attachments'][k]['url']
+            if hasattr(event.data, 'resolved') and hasattr(event.data.resolved, 'attachments'):
+                for k in event.data.resolved.attachments:
+                    example = event.data.resolved.attachments.get(k).url
                     break
 
             self.bot.plugins['SuggestionsPlugin'].commands[0].func(event, area, description, example)
-            # content = f"Area: {area}\nDescription: {description}"
-            #
-            # self.bot.client.api.interactions_create(event.id, event.token, 4, {"content": content})
 
         # # Grab the list of commands
         # commands = list(self.bot.get_commands_for_message(

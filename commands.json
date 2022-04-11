@@ -35,8 +35,24 @@
         },
         {
           "type": 11,
-          "name": "Examples",
-          "description": "Examples of your suggestion to help enforce your idea.",
+          "name": "Example",
+          "description": "Example of your suggestion to help enforce your idea.",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "deny",
+      "description": "Denies a suggestion",
+      "options": [
+        {
+          "type": 4,
+          "name": "Suggestion ID",
+          "required": true
+        {
+          "type": 3,
+          "name": "Reason",
+          "description": "The reason you are denying this suggestion. NOT NEEDED!!!",
           "required": false
         }
       ]

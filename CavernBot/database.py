@@ -8,10 +8,12 @@ REGISTERED_MODELS = []
 with open('config.yaml', 'r') as f:
     config = yaml.load(f, Loader=yaml.UnsafeLoader)
 
-bot_db = Proxy()
+bot_db = MySQLDatabase(config['database']['database_name'], user=config['database']['username'],
+                                    password=config['database']['password'],
+                                    host=config['database']['ip'], port=config['database']['port'])
 
 
-class CavernBot(Model):
+class Base(Model):
     class Meta:
         database = bot_db
 
@@ -24,14 +26,3 @@ class CavernBot(Model):
         REGISTERED_MODELS.append(cls)
         return cls
 
-
-def init_db():
-    bot_db.initialize(MySQLDatabase(config['database']['database_name'], user=config['database']['username'],
-                                    password=config['database']['password'],
-                                    host=config['database']['ip'], port=config['database']['port']))
-
-    for model in REGISTERED_MODELS:
-        model.create_table(True)
-
-        if hasattr(model, 'SQL'):
-            bot_db.execute_sql(model.SQL)

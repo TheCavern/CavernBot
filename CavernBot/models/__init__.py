@@ -1,0 +1,1 @@
+from CavernBot.models.Suggestions import Suggestion
