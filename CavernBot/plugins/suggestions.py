@@ -1,12 +1,30 @@
+import random
+import re
+import gevent
 from disco.bot import Plugin
 from disco.api.http import Routes
 
-from disco.types.message import MessageEmbed
+from disco.types.message import MessageEmbed, ActionRow
 
 from datetime import datetime
 
-from CavernBot.models.Suggestions import Suggestion
+from CavernBot.models.Suggestions import Suggestion, SuggestionVote
 from CavernBot.constants import Constants
+
+from gevent.queue import JoinableQueue
+
+SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
+
+
+class Vote:
+    suggestion = None
+    event = None
+    type = None
+
+    def __init__(self, suggestion, event, type):
+        self.suggestion = suggestion
+        self.event = event
+        self.type = type
 
 
 class SuggestionTypes(object):
@@ -20,45 +38,136 @@ class SuggestionsPlugin(Plugin):
     def load(self, ctx):
 
         # Suggestion ID: {voters: [Snowflakes], timer: GEventTimeout}
-        self.vote_cache = {}
+
+        self.vote_workers = []
+        self.vote_worker_count = 1
+        self.vote_queue = JoinableQueue()
+        self.is_shutdown = False
+        self.is_starting = True
+
+        for workerid in range(self.vote_worker_count):
+            self.vote_workers.append(self.spawn(self.VoteWorker))
+
+        self.is_starting = False
 
         super(SuggestionsPlugin, self).load(ctx)
+
+    def unload(self, ctx):
+        self.is_shutdown = True
+        for i in range(len(self.vote_workers)):
+            self.vote_queue.put(StopIteration)
+
+        gevent.joinall(self.vote_workers, timeout=50, raise_error=False)
+
+        super(SuggestionsPlugin, self).unload(ctx)
+
+    def VoteWorker(self):
+        self.log.info("Vote Worker Started.")
+        while not self.is_shutdown:
+            obj = self.vote_queue.get()
+            if obj != StopIteration:
+                try:
+                    obj.event.reply(type=6)
+                    s = Suggestion.get(id=obj.suggestion)
+
+                    svote, created = SuggestionVote.get_or_create(suggestion_id=obj.suggestion, user_id=obj.event.member.id)
+
+                    if obj.type == "upvote":
+                        svote.vote = 1
+                        svote.save()
+                    else:
+                        svote.vote = -1
+                        svote.save()
+
+                finally:
+                    gevent.sleep(random.randrange(1, 3))
+                    self.vote_queue.task_done()
+        self.log.info("Vote Worker Shutting Down.")
+
+    @Plugin.schedule(60)
+    def update_vote_workers(self):
+        if self.is_shutdown or self.is_starting:
+            return
+        try:
+            for index, worker in enumerate(self.vote_workers):
+                if worker.dead:
+                    self.vote_workers.pop(index)
+                    self.log.info(f"Vote Worker {index} has died :(")
+
+            if len(self.vote_workers) < self.vote_worker_count:
+                workers_tospawn = self.vote_worker_count - len(self.vote_workers)
+                self.log.info(f"Spawning {workers_tospawn} new vote worker(s)")
+                for workid in range(workers_tospawn):
+                    self.vote_workers.append(self.spawn(self.VoteWorker))
+                    gevent.sleep(random.randrange(1, 2))
+        except:
+            pass
 
     def handle_button(self, event, mode, suggestion_id):
         s = Suggestion.get(id=suggestion_id)
         s.approving_moderator = event.member.id
-        s.save()
 
         event.reply(type=6)
 
-        if mode == 'deny':
-            s.type = SuggestionTypes.DENIED
-            channel = event.guild.channels.get(Constants.SUGGESTIONS_DENIED_CHANNEL)
-            member = event.guild.get_member(s.user_id)
+        channel = event.guild.channels.get(Constants.SUGGESTIONS_DENIED_CHANNEL if mode == 'deny' else Constants.SUGGESTIONS_VOTE_CHANNEL)
 
-            e = MessageEmbed()
+        s.type = SuggestionTypes.DENIED if mode == 'deny' else SuggestionTypes.APPROVED
+        member = event.guild.get_member(s.user_id)
+        e = MessageEmbed()
+        if mode == 'deny':
             e.set_author(name=f"{member.user.username}#{member.user.discriminator}",
                          icon_url=member.user.get_avatar_url())
-            e.set_footer(text=f"Denied By: {event.member.user.username}#{event.member.user.discriminator} | ID: {s.id}",
+            e.set_footer(text=f"Denied By: {event.member.user.username}#{event.member.user.discriminator}",
                          icon_url=event.member.user.get_avatar_url())
-            e.title = s.area.title()
-            e.description = s.description
-            e.timestamp = datetime.utcnow().isoformat()
+        else:
+            e.set_footer(text=f"{member.user.username}#{str(member.user.discriminator)}",
+                         icon_url=member.user.get_avatar_url())
+            if s.example:
+                e.set_image(url=s.example)
+        e.title = f"ID: {s.id} | {s.area.title()}"
+        e.description = s.description
+        e.timestamp = s.created_at.isoformat()
 
-            denied = channel.send_message(embeds=[e])
-            s.message_id = denied.id
-            s.save()
+        msg = None
+        if mode == 'approve':
+            buttons = ActionRow()
+            buttons.add_component(custom_id=f"upvote_{s.id}", type=2, label="Upvote", style=3)
+            buttons.add_component(custom_id=f"downvote_{s.id}", type=2, label="Downvote", style=4)
 
+            msg = channel.send_message(embeds=[e], components=[buttons])
+        else:
+            msg = channel.send_message(embeds=[e])
+
+        s.message_id = msg.id
+        s.save()
+
+        if mode == 'deny':
             self.bot.client.api.http(Routes.CHANNELS_MESSAGES_MODIFY,
                                      dict(channel=Constants.SUGGESTIONS_PENDING_CHANNEL, message=event.message.id),
                                      json={"components": [], "embeds": [], "allowed_mentions": {"parse": []},
-                                           "content": f"**Suggestion** `{s.id}`: Denied by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{denied.id} "
+                                           "content": f"**Suggestion** `{s.id}`: Denied by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{msg.id} "
                                            })
-
             try:
                 member.user.open_dm().send_message(f"An update on Suggestion #**{s.id}**:\nIt has been denied.")
             except:
                 pass
+        else:
+            self.bot.client.api.http(Routes.CHANNELS_MESSAGES_MODIFY,
+                                     dict(channel=Constants.SUGGESTIONS_PENDING_CHANNEL, message=event.message.id),
+                                     json={"components": [], "embeds": [], "allowed_mentions": {"parse": []},
+                                           "content": f"**Suggestion** `{s.id}`: Approved by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_VOTE_CHANNEL}/{msg.id} "
+                                           })
+
+    @Plugin.listen('InteractionCreate')
+    def vote(self, event):
+        # self.vote_queue.put()
+        if event.type == 3:
+            if hasattr(event.data, 'custom_id'):
+                if event.data.custom_id.startswith('upvote_') or event.data.custom_id.startswith('downvote_'):
+                    idata = SUGGESTION_RE.findall(event.data.custom_id)
+                    mode, id = idata[0][0], int(idata[0][1])
+
+                    self.vote_queue.put(Vote(id, event, mode))
 
     @Plugin.command('suggestion', '<area:str> <description:str...>')
     def suggestion(self, event, area, description, example):
@@ -71,35 +180,15 @@ class SuggestionsPlugin(Plugin):
         e.timestamp = datetime.utcnow().isoformat()
         if example:
             e.set_image(url=example)
+            s.example = example
 
-        buttons = [
-            {
-                "type": 1,
-                "components": [
-                    {
-                        "custom_id": f"approve_{s.id}",
-                        "type": 2,
-                        "label": "Approve",
-                        "style": 2,
-                        "emoji": {
-                            "name": "✅"
-                        }
-                    },
-                    {
-                        "custom_id": f"deny_{s.id}",
-                        "type": 2,
-                        "label": "Deny",
-                        "style": 2,
-                        "emoji": {
-                            "name": "🚫"
-                        }
-                    }
-                ]
-            }
-        ]
+        channel = event.guild.channels.get(Constants.SUGGESTIONS_PENDING_CHANNEL)
 
-        message = self.bot.client.api.channels_messages_create(Constants.SUGGESTIONS_PENDING_CHANNEL, embeds=[e],
-                                                               components=buttons)
+        buttons = ActionRow()
+        buttons.add_component(custom_id=f"approve_{s.id}", type=2, label="Approve", style=2, emoji={"name": "✅"})
+        buttons.add_component(custom_id=f"deny_{s.id}", type=2, label="Deny", style=2, emoji={"name": "🚫"})
+
+        message = channel.send_message(embeds=[e], components=[buttons])
         s.message_id = message.id
         s.save()
 
