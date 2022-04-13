@@ -28,4 +28,4 @@ class SuggestionVote(Base):
 
     suggestion_id = BigIntegerField()
     user_id = BigIntegerField()
-    vote = IntegerField()
+    vote = IntegerField(default=0)

@@ -68,14 +68,13 @@ class SuggestionsPlugin(Plugin):
             if obj != StopIteration:
                 try:
                     obj.event.reply(type=6)
-                    s = Suggestion.get(id=obj.suggestion)
 
                     svote, created = SuggestionVote.get_or_create(suggestion_id=obj.suggestion, user_id=obj.event.member.id)
 
-                    if obj.type == "upvote":
+                    if obj.type == "upvote" and svote.vote != 1:
                         svote.vote = 1
                         svote.save()
-                    else:
+                    elif svote.vote != -1:
                         svote.vote = -1
                         svote.save()
 
@@ -115,12 +114,12 @@ class SuggestionsPlugin(Plugin):
         member = event.guild.get_member(s.user_id)
         e = MessageEmbed()
         if mode == 'deny':
-            e.set_author(name=f"{member.user.username}#{member.user.discriminator}",
+            e.set_author(name=f"{member.user}",
                          icon_url=member.user.get_avatar_url())
-            e.set_footer(text=f"Denied By: {event.member.user.username}#{event.member.user.discriminator}",
+            e.set_footer(text=f"Denied By: {event.member.user}",
                          icon_url=event.member.user.get_avatar_url())
         else:
-            e.set_footer(text=f"{member.user.username}#{str(member.user.discriminator)}",
+            e.set_footer(text=f"{member.user}",
                          icon_url=member.user.get_avatar_url())
             if s.example:
                 e.set_image(url=s.example)
@@ -173,7 +172,7 @@ class SuggestionsPlugin(Plugin):
     def suggestion(self, event, area, description, example):
         s = Suggestion.create(user_id=event.member.id, area=area, description=description)
         e = MessageEmbed()
-        e.set_footer(text=f"{event.member.user.username}#{event.member.user.discriminator}",
+        e.set_footer(text=event.member.user,
                      icon_url=event.member.user.get_avatar_url())
         e.title = f"ID: {s.id} | {area.title()}"
         e.description = description
