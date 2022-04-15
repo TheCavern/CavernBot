@@ -1,6 +1,8 @@
 import re
 from disco.bot import Bot, Plugin
 
+from CavernBot.constants import Constants
+
 SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
 
 
@@ -53,4 +55,48 @@ class CorePlugin(Plugin):
 
             cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
             cmd.func(event, area, description, example)
+
+        if command_name == 'sinfo':
+
+            event.reply(type=4, content=f"Not Implemented Yet ~ Justin",
+                        flags=(1 << 6))
+            return
+
+            id = None
+            user = None
+
+            for option in event.data.options:
+                if option.name == 'id':
+                    id = option.value
+                if option.name == 'user':
+                    user = event.data.resolved.users.get(option.value)
+
+            if id == None and user == None:
+                user = event.member.user
+
+            if id != None and user != None:
+
+                event.reply(type=4, content=f"You may not specify both a Suggestion ID and a User to search.",
+                            flags=(1 << 6))
+            elif user != None:
+                has_perms = False
+                for x in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
+                    if x in event.member.roles:
+                        has_perms = True
+                    if event.member.user.id == x:
+                        has_perms = True
+
+                if not has_perms:
+                    event.reply(type=4, content=f"Permission Denied.",
+                                flags=(1 << 6))
+
+                if has_perms:
+                    event.reply(type=4, content=f":D",
+                                flags=(1 << 6))
+
+            # cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
+            #            None)
+            #
+            # cmd.func(event, id, user)
+
         return

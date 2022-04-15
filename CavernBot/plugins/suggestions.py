@@ -30,8 +30,11 @@ class Vote:
 class SuggestionTypes(object):
     PENDING = 0
     DENIED = 1
-    APPROVED = 2
-    IMPLEMENTED = 3
+    VOTING = 2
+    APPROVED = 3
+    IMPLEMENTED = 4
+    FORCED_DENIED = 5
+    FORCED_APPROVED = 6
 
 
 class SuggestionsPlugin(Plugin):
@@ -69,7 +72,8 @@ class SuggestionsPlugin(Plugin):
                 try:
                     obj.event.reply(type=6)
 
-                    svote, created = SuggestionVote.get_or_create(suggestion_id=obj.suggestion, user_id=obj.event.member.id)
+                    svote, created = SuggestionVote.get_or_create(suggestion_id=obj.suggestion,
+                                                                  user_id=obj.event.member.id)
 
                     if obj.type == "upvote" and svote.vote != 1:
                         svote.vote = 1
@@ -102,15 +106,76 @@ class SuggestionsPlugin(Plugin):
         except:
             pass
 
+    @Plugin.schedule(3600)
+    def vote_check_schedule(self):
+        for suggest in Suggestion.select().where(Suggestion.type == SuggestionTypes.VOTING):
+            positive = len(
+                SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.suggestion_id == suggest.id))
+            negative = len(
+                SuggestionVote.select().where(SuggestionVote.vote == -1, SuggestionVote.suggestion_id == suggest.id))
+            total_votes = positive + negative
+
+            if total_votes < 20:
+                continue
+
+            if total_votes >= 30 and positive >= int(total_votes * .70):
+                suggest.type = SuggestionTypes.APPROVED
+                suggest.downvotes = negative
+                suggest.upvotes = positive
+
+                self.bot.client.api.channels_messages_delete(Constants.SUGGESTIONS_VOTE_CHANNEL, suggest.message_id)
+                user = self.bot.client.api.users_get(suggest.user_id)
+
+                channel = self.bot.client.api.channels_get(Constants.SUGGESTIONS_APPROVED_CHANNEL)
+
+                e = MessageEmbed()
+                e.set_footer(text=f"{user}",
+                             icon_url=user.get_avatar_url())
+                if suggest.example:
+                    e.set_image(url=suggest.example)
+                e.title = f"ID: {suggest.id} | {suggest.area.title()}"
+                e.description = f"{suggest.description}\n\n**__Final Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (positive / total_votes * 100)}%`)\nNegative: **{negative}** (`{'%.2f' % (negative / total_votes * 100)}%`) "
+                e.timestamp = suggest.created_at.isoformat()
+
+                suggest.save()
+
+                channel.send_message(content="Community Approved", embeds=[e])
+
+            elif total_votes >= 20 and negative >= int(total_votes * .80):
+                suggest.type = SuggestionTypes.DENIED
+                suggest.downvotes = negative
+                suggest.upvotes = positive
+
+                self.bot.client.api.channels_messages_delete(Constants.SUGGESTIONS_VOTE_CHANNEL, suggest.message_id)
+                user = self.bot.client.api.users_get(suggest.user_id)
+
+                channel = self.bot.client.api.channels_get(Constants.SUGGESTIONS_DENIED_CHANNEL)
+
+                e = MessageEmbed()
+                e.set_footer(text=f"{user}",
+                             icon_url=user.get_avatar_url())
+                if suggest.example:
+                    e.set_image(url=suggest.example)
+                e.title = f"ID: {suggest.id} | {suggest.area.title()}"
+                e.description = f"{suggest.description}\n\n**__Final Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (positive / total_votes * 100)}%`)\nNegative: **{negative}** (`{'%.2f' % (negative / total_votes * 100)}%`) "
+                e.timestamp = suggest.created_at.isoformat()
+
+                suggest.save()
+
+                channel.send_message(content="Community Denied", embeds=[e])
+            else:
+                continue
+
     def handle_button(self, event, mode, suggestion_id):
         s = Suggestion.get(id=suggestion_id)
         s.approving_moderator = event.member.id
 
         event.reply(type=6)
 
-        channel = event.guild.channels.get(Constants.SUGGESTIONS_DENIED_CHANNEL if mode == 'deny' else Constants.SUGGESTIONS_VOTE_CHANNEL)
+        channel = event.guild.channels.get(
+            Constants.SUGGESTIONS_DENIED_CHANNEL if mode == 'deny' else Constants.SUGGESTIONS_VOTE_CHANNEL)
 
-        s.type = SuggestionTypes.DENIED if mode == 'deny' else SuggestionTypes.APPROVED
+        s.type = SuggestionTypes.DENIED if mode == 'deny' else SuggestionTypes.VOTING
         member = event.guild.get_member(s.user_id)
         e = MessageEmbed()
         if mode == 'deny':

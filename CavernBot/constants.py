@@ -13,3 +13,4 @@ class Constants(object):
     SUGGESTIONS_PENDING_CHANNEL = loaded['discord']['suggestions']['pending_channel']
     SUGGESTIONS_DENIED_CHANNEL = loaded['discord']['suggestions']['denied_channel']
     SUGGESTIONS_APPROVED_CHANNEL = loaded['discord']['suggestions']['approved_channel']
+    SUGGESTIONS_SINFO_PERMISSIONS = loaded['discord']['suggestions']['sinfo_roles']

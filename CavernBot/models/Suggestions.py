@@ -1,4 +1,4 @@
-from peewee import IntegerField, BigIntegerField, TextField, DateTimeField
+from peewee import IntegerField, BigIntegerField, TextField, DateTimeField, BooleanField
 from datetime import datetime
 
 from CavernBot.database import Base
@@ -19,6 +19,8 @@ class Suggestion(Base):
     upvotes = IntegerField(default=0)
     downvotes = IntegerField(default=0)
     created_at = DateTimeField(default=datetime.utcnow)
+    forced = BooleanField(default=False)
+    forced_by = BigIntegerField(null=True)
 
 
 @Base.register

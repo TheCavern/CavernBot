@@ -60,11 +60,37 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "sinfo",
+      "description": "Get suggestion info about a user or a certain suggestion",
+      "options": [
+        {
+          "type": 4,
+          "name": "id",
+          "description": "ID of the suggestion",
+          "required": false
+        },
+        {
+          "type": 6,
+          "name": "user",
+          "description": "User you wish to view stats for",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "Force Approve",
+      "type": 3
+    },
+    {
+      "name": "Force Deny",
+      "type": 3
     }
   ],
   "permissions": [
     {
-      "id": 963210867367878696,
+      "id": 964279757476884511,
       "application_id": 600927461462769680,
       "guild_id": 702144279807656038,
       "permissions": [
