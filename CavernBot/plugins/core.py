@@ -34,7 +34,8 @@ class CorePlugin(Plugin):
                 if option.name == 'reason':
                     reason = option.value
 
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
+                       None)
             cmd.func(event, sid, reason=reason)
 
         if command_name == 'suggestion':
@@ -53,17 +54,21 @@ class CorePlugin(Plugin):
                     example = event.data.resolved.attachments.get(k).url
                     break
 
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
+                       None)
             cmd.func(event, area, description, example)
 
         if command_name == 'sinfo':
 
-            event.reply(type=4, content=f"Not Implemented Yet ~ Justin",
-                        flags=(1 << 6))
-            return
-
             id = None
             user = None
+            has_perms = None
+
+            for x in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
+                if x in event.member.roles:
+                    has_perms = True
+                if event.member.user.id == x:
+                    has_perms = True
 
             for option in event.data.options:
                 if option.name == 'id':
@@ -75,28 +80,19 @@ class CorePlugin(Plugin):
                 user = event.member.user
 
             if id != None and user != None:
-
                 event.reply(type=4, content=f"You may not specify both a Suggestion ID and a User to search.",
                             flags=(1 << 6))
-            elif user != None:
-                has_perms = False
-                for x in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
-                    if x in event.member.roles:
-                        has_perms = True
-                    if event.member.user.id == x:
-                        has_perms = True
+                return
 
-                if not has_perms:
-                    event.reply(type=4, content=f"Permission Denied.",
-                                flags=(1 << 6))
+            if not has_perms and user != None and user != event.member.user:
+                event.reply(type=4, content="**Error**: Permission Denied.",
+                            flags=(1 << 6))
+                return
 
-                if has_perms:
-                    event.reply(type=4, content=f":D",
-                                flags=(1 << 6))
+            cmd = next(
+                (cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
+                None)
 
-            # cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
-            #            None)
-            #
-            # cmd.func(event, id, user)
+            cmd.func(event, id, user, perms=has_perms)
 
         return

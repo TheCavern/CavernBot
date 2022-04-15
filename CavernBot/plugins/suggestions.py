@@ -37,6 +37,11 @@ class SuggestionTypes(object):
     FORCED_APPROVED = 6
 
 
+def check_user(user):
+    if user.id in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
+        return True
+
+
 class SuggestionsPlugin(Plugin):
     def load(self, ctx):
 
@@ -304,3 +309,102 @@ class SuggestionsPlugin(Plugin):
 
         event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been denied!",
                     flags=(1 << 6))
+
+    @Plugin.command('sinfo', '[id:int] [user:user|snowflake]')
+    def cmd_sinfo(self, event, id, user, perms=False):
+
+        def zero_check(num, tv):
+            if num == 0:
+                return 0
+            else:
+                return num / tv * 100
+
+        if id:
+            s = Suggestion.get(id=id)
+            if not s:
+                event.reply(type=4, content=f"**Error**: Suggestion ID `{id}` does not exist.",
+                            flags=(1 << 6))
+                return
+            elif not perms:
+                event.reply(type=4, content=f"**Permission Denied**: Suggestion ID `{id}` is not your own.",
+                            flags=(1 << 6))
+                return
+            else:
+
+                positive = len(
+                    SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.suggestion_id == s.id))
+                negative = len(
+                    SuggestionVote.select().where(SuggestionVote.vote == -1,
+                                                  SuggestionVote.suggestion_id == s.id))
+                total_votes = positive + negative
+
+                member = event.guild.get_member(s.user_id)
+                e = MessageEmbed()
+                e.set_footer(text=f"{member.user}",
+                             icon_url=member.user.get_avatar_url())
+                if s.example:
+                    e.set_image(url=s.example)
+                e.title = f"ID: {s.id} | {s.area.title()}"
+
+                e.description = f"{s.description}\n\n**__Current Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (zero_check(positive, total_votes))}%`)\nNegative: **{negative}** (`{'%.2f' % (zero_check(negative, total_votes))}%`) "
+                e.timestamp = s.created_at.isoformat()
+
+                event.reply(type=4, embeds=[e],
+                            flags=(1 << 6))
+        elif user:
+
+            e = MessageEmbed()
+            e.set_author(name=f"{user}", icon_url=user.get_avatar_url())
+
+            suggestions = Suggestion.select().where(Suggestion.user_id == user.id)
+
+            txt = []
+            pending = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.PENDING])
+            denied = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.DENIED])
+            vote = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.VOTING])
+            approved = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.APPROVED])
+            implimented = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.IMPLEMENTED])
+
+            for s in suggestions:
+                channels = {
+                    0: Constants.SUGGESTIONS_PENDING_CHANNEL,
+                    1: Constants.SUGGESTIONS_DENIED_CHANNEL,
+                    2: Constants.SUGGESTIONS_VOTE_CHANNEL,
+                    3: Constants.SUGGESTIONS_APPROVED_CHANNEL
+                }
+                if perms:
+                    txt.append(f"[{s.id}](https://discord.com/channels/{event.guild.id}/{channels[s.type]}/{s.message_id})")
+                elif s.type == SuggestionTypes.VOTING:
+                    txt.append(
+                        f"[{s.id}](https://discord.com/channels/{event.guild.id}/{channels[s.type]}/{s.message_id})")
+                else:
+                    txt.append(f"{s.id}")
+
+            positive = len(
+                SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.user_id == user.id))
+            negative = len(
+                SuggestionVote.select().where(SuggestionVote.vote == -1,
+                                              SuggestionVote.suggestion_id == user.id))
+            total_votes = positive + negative
+
+            votes = [
+                f"Positive: **{positive}** `{'%.2f' % (zero_check(positive, total_votes))}%`",
+                f"Negative: **{negative}** `{'%.2f' % (zero_check(negative, total_votes))}%`"
+            ]
+
+            total_results = [
+                f"Pending: **{pending}** `{'%.2f' % (zero_check(pending, len(suggestions)))}%`",
+                f"Denied: **{denied}** `{'%.2f' % (zero_check(denied, len(suggestions)))}%`",
+                f"Up For Vote: **{vote}** `{'%.2f' % (zero_check(vote, len(suggestions)))}%`",
+                f"Approved: **{approved}** `{'%.2f' % (zero_check(approved, len(suggestions)))}%`",
+                f"Implemented: **{implimented}** `{'%.2f' % (zero_check(implimented, len(suggestions)))}%`",
+            ]
+
+            e.add_field(name=f"Total Suggestions ({len(suggestions)})", value=",".join(txt), inline=True)
+            e.add_field(name=f"Total Votes Casted ({total_votes})", value="\n".join(votes), inline=True)
+            e.add_field(name=f"Total Suggestion Results", value="\n".join(total_results), inline=False)
+
+            event.reply(type=4, embeds=[e],
+                        flags=(1 << 6))
+
+            return
