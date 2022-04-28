@@ -14,3 +14,8 @@ class Constants(object):
     SUGGESTIONS_DENIED_CHANNEL = loaded['discord']['suggestions']['denied_channel']
     SUGGESTIONS_APPROVED_CHANNEL = loaded['discord']['suggestions']['approved_channel']
     SUGGESTIONS_SINFO_PERMISSIONS = loaded['discord']['suggestions']['sinfo_roles']
+    SUGGESTIONS_BANNED_ROLE = loaded['discord']['suggestions']['banned_role']
+
+    TICKETS_BASE_CHANNEL = loaded['discord']['tickets']['base_channel']
+
+    MEDIA_CHANNEL = loaded['discord']['media_channel']

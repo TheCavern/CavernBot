@@ -10,6 +10,12 @@ class CorePlugin(Plugin):
     def load(self, ctx):
         super(CorePlugin, self).load(ctx)
 
+    @Plugin.listen('MessageCreate')
+    def media_channel(self, event):
+        if event.channel.id != Constants.MEDIA_CHANNEL: return
+        if hasattr(event.message, 'attachments') and len(event.message.attachments) > 0: return
+        event.message.delete()
+
     # Basic command handler
     @Plugin.listen('InteractionCreate')
     def on_interaction_create(self, event):
@@ -39,6 +45,13 @@ class CorePlugin(Plugin):
             cmd.func(event, sid, reason=reason)
 
         if command_name == 'suggestion':
+
+            if Constants.SUGGESTIONS_BANNED_ROLE in event.member.roles:
+                return event.reply(type=4, content="**ERROR**: Permission Denied (`You have been banned from making "
+                                            "suggestions.`)",
+                            flags=(1 << 6))
+
+
             area = None
             description = None
             example = None
