@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "cavernbot"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">3.10,<4"
+betterdisco-py = {git = "https://github.com/elderlabs/BetterDisco.git", rev = "staging/justin", extras = ["performance", "yaml"]}
+peewee = "^3.15.4"
+pymysql = "^1.0.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

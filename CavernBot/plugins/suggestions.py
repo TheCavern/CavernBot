@@ -120,10 +120,10 @@ class SuggestionsPlugin(Plugin):
                 SuggestionVote.select().where(SuggestionVote.vote == -1, SuggestionVote.suggestion_id == suggest.id))
             total_votes = positive + negative
 
-            if total_votes < 20:
+            if total_votes < 40:
                 continue
 
-            if total_votes >= 30 and positive >= int(total_votes * .70):
+            if total_votes >= 60 and positive >= int(total_votes * .70):
                 suggest.type = SuggestionTypes.APPROVED
                 suggest.downvotes = negative
                 suggest.upvotes = positive
@@ -146,7 +146,7 @@ class SuggestionsPlugin(Plugin):
 
                 channel.send_message(content="Community Approved", embeds=[e])
 
-            elif total_votes >= 20 and negative >= int(total_votes * .80):
+            elif total_votes >= 40 and negative >= int(total_votes * .80):
                 suggest.type = SuggestionTypes.DENIED
                 suggest.downvotes = negative
                 suggest.upvotes = positive
@@ -280,7 +280,7 @@ class SuggestionsPlugin(Plugin):
                      icon_url=member.user.get_avatar_url())
         e.set_footer(text=f"Denied By: {event.member.user.username}#{event.member.user.discriminator} | ID: {s.id}",
                      icon_url=event.member.user.get_avatar_url())
-        e.title = s.area.title()
+        e.title = f"ID: {s.id} | {s.area.title()}"
         e.description = s.description
         e.timestamp = datetime.utcnow().isoformat()
 
@@ -325,7 +325,7 @@ class SuggestionsPlugin(Plugin):
                 event.reply(type=4, content=f"**Error**: Suggestion ID `{id}` does not exist.",
                             flags=(1 << 6))
                 return
-            elif not perms:
+            elif not perms and s.user_id != event.member.user.id:
                 event.reply(type=4, content=f"**Permission Denied**: Suggestion ID `{id}` is not your own.",
                             flags=(1 << 6))
                 return
@@ -365,6 +365,9 @@ class SuggestionsPlugin(Plugin):
             approved = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.APPROVED])
             implimented = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.IMPLEMENTED])
 
+            if len(suggestions) == 0:
+                txt.append("*No Suggestions.*")
+
             for s in suggestions:
                 channels = {
                     0: Constants.SUGGESTIONS_PENDING_CHANNEL,
@@ -384,7 +387,7 @@ class SuggestionsPlugin(Plugin):
                 SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.user_id == user.id))
             negative = len(
                 SuggestionVote.select().where(SuggestionVote.vote == -1,
-                                              SuggestionVote.suggestion_id == user.id))
+                                              SuggestionVote.user_id == user.id))
             total_votes = positive + negative
 
             votes = [

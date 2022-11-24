@@ -8,9 +8,7 @@ REGISTERED_MODELS = []
 with open('config.yaml', 'r') as f:
     config = yaml.load(f, Loader=yaml.UnsafeLoader)
 
-bot_db = MySQLDatabase(config['database']['database_name'], user=config['database']['username'],
-                                    password=config['database']['password'],
-                                    host=config['database']['ip'], port=config['database']['port'])
+bot_db = MySQLDatabase(config['database']['database_name'], user=config['database']['username'], password=config['database']['password'], host=config['database']['ip'], port=config['database']['port'])
 
 
 class Base(Model):
