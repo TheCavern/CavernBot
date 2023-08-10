@@ -4,8 +4,9 @@ with open('config.yaml', 'r') as f:
     loaded = yaml.load(f.read(), Loader=yaml.FullLoader)
     locals().update(loaded.get('constants', {}))
 
+
 class Constants(object):
-    VERSION = "1.0-Beta"
+    VERSION = "1.1-Beta"
 
     LOGGING_CHANNEL = loaded['discord']['logging_channel']
 
@@ -19,3 +20,4 @@ class Constants(object):
     TICKETS_BASE_CHANNEL = loaded['discord']['tickets']['base_channel']
 
     MEDIA_CHANNEL = loaded['discord']['media_channel']
+    STAFF_ROLES = loaded['discord']['staff_roles']

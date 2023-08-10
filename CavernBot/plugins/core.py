@@ -1,5 +1,6 @@
 import re
 from disco.bot import Bot, Plugin
+from disco.gateway.events import MessageCreate, InteractionCreate
 
 from CavernBot.constants import Constants
 
@@ -11,15 +12,16 @@ class CorePlugin(Plugin):
         super(CorePlugin, self).load(ctx)
 
     @Plugin.listen('MessageCreate')
-    def media_channel(self, event):
-        if event.channel.id != Constants.MEDIA_CHANNEL: return
-        if hasattr(event.message, 'attachments') and len(event.message.attachments) > 0: return
+    def media_channel(self, event: MessageCreate):
+        if event.channel.id != Constants.MEDIA_CHANNEL:
+            return
+        if hasattr(event.message, 'attachments') and len(event.message.attachments) > 0:
+            return
         event.message.delete()
 
     # Basic command handler
     @Plugin.listen('InteractionCreate')
-    def on_interaction_create(self, event):
-
+    def on_interaction_create(self, event: InteractionCreate):
         if event.type == 3:
             if hasattr(event.data, 'custom_id'):
                 if event.data.custom_id.startswith('deny_') or event.data.custom_id.startswith('approve_'):
@@ -40,16 +42,13 @@ class CorePlugin(Plugin):
                 if option.name == 'reason':
                     reason = option.value
 
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
-                       None)
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
             cmd.func(event, sid, reason=reason)
 
         if command_name == 'suggestion':
-
-            if Constants.SUGGESTIONS_BANNED_ROLE in event.member.roles:
-                return event.reply(type=4, content="**ERROR**: Permission Denied (`You have been banned from making "
-                                            "suggestions.`)",
-                            flags=(1 << 6))
+            return event.reply(type=4, content="Suggestions are currently closed. We’re actively working on implementing the community approved suggestions!", flags=(1 << 6))
+            if Constants.SUGGESTIONS_BANNED_ROLE in event.m.roles:
+                return event.reply(type=4, content="**ERROR**: Permission Denied (`You have been banned from making suggestions.`)", flags=(1 << 6))
 
 
             area = None
@@ -67,20 +66,18 @@ class CorePlugin(Plugin):
                     example = event.data.resolved.attachments.get(k).url
                     break
 
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
-                       None)
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
             cmd.func(event, area, description, example)
 
         if command_name == 'sinfo':
-
             id = None
             user = None
             has_perms = None
 
             for x in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
-                if x in event.member.roles:
+                if x in event.m.roles:
                     has_perms = True
-                if event.member.user.id == x:
+                if event.m.user.id == x:
                     has_perms = True
 
             for option in event.data.options:
@@ -90,22 +87,17 @@ class CorePlugin(Plugin):
                     user = event.data.resolved.users.get(option.value)
 
             if id == None and user == None:
-                user = event.member.user
+                user = event.m.user
 
             if id != None and user != None:
-                event.reply(type=4, content=f"You may not specify both a Suggestion ID and a User to search.",
-                            flags=(1 << 6))
+                event.reply(type=4, content=f"You may not specify both a Suggestion ID and a User to search.", flags=(1 << 6))
                 return
 
-            if not has_perms and user != None and user != event.member.user:
+            if not has_perms and user != None and user != event.m.user:
                 event.reply(type=4, content="**Error**: Permission Denied.",
                             flags=(1 << 6))
                 return
 
-            cmd = next(
-                (cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name),
-                None)
-
+            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
             cmd.func(event, id, user, perms=has_perms)
-
         return

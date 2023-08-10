@@ -134,8 +134,7 @@ class SuggestionsPlugin(Plugin):
                 channel = self.bot.client.api.channels_get(Constants.SUGGESTIONS_APPROVED_CHANNEL)
 
                 e = MessageEmbed()
-                e.set_footer(text=f"{user}",
-                             icon_url=user.get_avatar_url())
+                e.set_footer(text=f"{user}", icon_url=user.get_avatar_url())
                 if suggest.example:
                     e.set_image(url=suggest.example)
                 e.title = f"ID: {suggest.id} | {suggest.area.title()}"
@@ -184,8 +183,7 @@ class SuggestionsPlugin(Plugin):
         member = event.guild.get_member(s.user_id)
         e = MessageEmbed()
         if mode == 'deny':
-            e.set_author(name=f"{member.user}",
-                         icon_url=member.user.get_avatar_url())
+            e.set_author(name=f"{member.user}", icon_url=member.user.get_avatar_url())
             e.set_footer(text=f"Denied By: {event.member.user}",
                          icon_url=event.member.user.get_avatar_url())
         else:
@@ -240,10 +238,11 @@ class SuggestionsPlugin(Plugin):
 
     @Plugin.command('suggestion', '<area:str> <description:str...>')
     def suggestion(self, event, area, description, example):
-        s = Suggestion.create(user_id=event.member.id, area=area, description=description)
+        return event.reply(type=4, content="Suggestions are currently closed. We’re actively working on implementing the community approved suggestions!", flags=(1 << 6))
+        s = Suggestion.create(user_id=event.m.id, area=area, description=description)
         e = MessageEmbed()
-        e.set_footer(text=event.member.user,
-                     icon_url=event.member.user.get_avatar_url())
+        e.set_footer(text=event.m.user,
+                     icon_url=event.m.user.get_avatar_url())
         e.title = f"ID: {s.id} | {area.title()}"
         e.description = description
         e.timestamp = datetime.utcnow().isoformat()
@@ -261,8 +260,7 @@ class SuggestionsPlugin(Plugin):
         s.message_id = message.id
         s.save()
 
-        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been submitted for review by a moderator!",
-                    flags=(1 << 6))
+        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been submitted for review by a moderator!", flags=(1 << 6))
 
         return
 
@@ -278,15 +276,14 @@ class SuggestionsPlugin(Plugin):
         e = MessageEmbed()
         e.set_author(name=f"{member.user.username}#{member.user.discriminator}",
                      icon_url=member.user.get_avatar_url())
-        e.set_footer(text=f"Denied By: {event.member.user.username}#{event.member.user.discriminator} | ID: {s.id}",
-                     icon_url=event.member.user.get_avatar_url())
+        e.set_footer(text=f"Denied By: {event.m.user.username}#{event.m.user.discriminator} | ID: {s.id}", icon_url=event.m.user.get_avatar_url())
         e.title = f"ID: {s.id} | {s.area.title()}"
         e.description = s.description
         e.timestamp = datetime.utcnow().isoformat()
 
         denied = channel.send_message(embeds=[e])
 
-        msg = f"**Suggestion** `{s.id}`: Denied by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{denied.id}"
+        msg = f"**Suggestion** `{s.id}`: Denied by <@{event.m.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{denied.id}"
         dm_msg = f"An update on Suggestion #**{s.id}**:\nIt has been denied."
 
         if reason:
@@ -307,8 +304,7 @@ class SuggestionsPlugin(Plugin):
         except:
             pass
 
-        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been denied!",
-                    flags=(1 << 6))
+        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been denied!", flags=(1 << 6))
 
     @Plugin.command('sinfo', '[id:int] [user:user|snowflake]')
     def cmd_sinfo(self, event, id, user, perms=False):
@@ -322,12 +318,10 @@ class SuggestionsPlugin(Plugin):
         if id:
             s = Suggestion.get(id=id)
             if not s:
-                event.reply(type=4, content=f"**Error**: Suggestion ID `{id}` does not exist.",
-                            flags=(1 << 6))
+                event.reply(type=4, content=f"**Error**: Suggestion ID `{id}` does not exist.", flags=(1 << 6))
                 return
-            elif not perms and s.user_id != event.member.user.id:
-                event.reply(type=4, content=f"**Permission Denied**: Suggestion ID `{id}` is not your own.",
-                            flags=(1 << 6))
+            elif not perms and s.user_id != event.m.user.id:
+                event.reply(type=4, content=f"**Permission Denied**: Suggestion ID `{id}` is not your own.", flags=(1 << 6))
                 return
             else:
 
@@ -407,7 +401,6 @@ class SuggestionsPlugin(Plugin):
             e.add_field(name=f"Total Votes Casted ({total_votes})", value="\n".join(votes), inline=True)
             e.add_field(name=f"Total Suggestion Results", value="\n".join(total_results), inline=False)
 
-            event.reply(type=4, embeds=[e],
-                        flags=(1 << 6))
+            event.reply(type=4, embeds=[e], flags=(1 << 6))
 
             return
