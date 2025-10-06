@@ -1,7 +1,8 @@
-from peewee import IntegerField, BigIntegerField, TextField, DateTimeField, BooleanField
-from datetime import datetime
+from peewee import IntegerField, BigIntegerField, TextField, DateTimeField, BooleanField, AutoField
 
+from CavernBot.constants import SuggestionStatus
 from CavernBot.database import Base
+from CavernBot.models import datetime_utc
 
 
 @Base.register
@@ -9,16 +10,16 @@ class Suggestion(Base):
     class Meta:
         table_name = 'suggestions'
 
+    id = AutoField(primary_key=True)
     user_id = BigIntegerField()
-    message_id = BigIntegerField()
-    area = TextField()
+    message = TextField(null=True)
+    category = TextField()
     description = TextField()
-    example = TextField(null=True)
-    type = IntegerField(default=0)
-    approving_moderator = BigIntegerField(null=True)
-    upvotes = IntegerField(default=0)
-    downvotes = IntegerField(default=0)
-    created_at = DateTimeField(default=datetime.utcnow)
+    status = IntegerField(default=SuggestionStatus.PENDING)
+    reviewing_moderator = BigIntegerField(null=True)
+    created_at = TextField(default=datetime_utc)
+    updated_at = TextField(null=True)
+    updated_by = BigIntegerField(null=True)
     forced = BooleanField(default=False)
     forced_by = BigIntegerField(null=True)
 

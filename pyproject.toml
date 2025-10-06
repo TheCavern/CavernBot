@@ -1,18 +1,30 @@
-[tool.poetry]
+[project]
 name = "cavernbot"
 version = "0.1.0"
-description = ""
-authors = []
+description = "Suggestions and other things?"
+authors = [
+    {"name" = "ThatGuyJustin", email="justin@thecavern.net"},
+    {"name"= "hackerjeff", email="iam@nadie.dev"}
+]
 readme = "README.md"
+requires-python = ">=3.12,<4"
+
+dependencies = [
+    "betterdisco-py[performace,yaml] (>=2025.0.0,<2026.0.0)",
+    "peewee>=3.16.2,<4.0.0",
+    "pymysql>=1.1.0,<2.0.0",
+    "setuptools>=68.2.2,<69.0.0",
+    "matplotlib>=3.10.6,<4.0.0",
+    "notebook>=7.4.7,<8.0.0",
+    "plotly>=6.3.1,<7.0.0",
+    "pandas>=2.3.3,<3.0.0",
+    "kaleido>=1.1.0,<2.0.0",
+    "dotenv>=0.9.9,<1.0.0"
+]
 
 [tool.poetry.dependencies]
-python = ">3.10,<4"
-betterdisco-py = {git = "https://github.com/elderlabs/BetterDisco.git", rev = "staging/justin", extras = ["performance", "yaml"]}
-peewee = "^3.15.4"
-pymysql = "^1.0.2"
-setuptools = "^68.0.0"
-
+betterdisco-py = { git = "https://github.com/elderlabs/BetterDisco.git", rev = "staging/justin", extras = ["performance", "yaml"] }
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"

@@ -1,14 +1,19 @@
+import os
+
+from dotenv import load_dotenv
 from peewee import MySQLDatabase
 from peewee import Model, Proxy
 
-import yaml
-
 REGISTERED_MODELS = []
 
-with open('config.yaml', 'r') as f:
-    config = yaml.load(f, Loader=yaml.UnsafeLoader)
+load_dotenv()
 
-bot_db = MySQLDatabase(config['database']['database_name'], user=config['database']['username'], password=config['database']['password'], host=config['database']['ip'], port=config['database']['port'])
+bot_db = MySQLDatabase(os.getenv("DB_DATABASE"),
+                       user=os.getenv("DB_USERNAME"),
+                       password=os.getenv("DB_PASSWORD"),
+                       host=os.getenv("DB_HOST"),
+                       port=int(os.getenv("DB_PORT"))
+                   )
 
 
 class Base(Model):

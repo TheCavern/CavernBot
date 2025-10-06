@@ -1,0 +1,56 @@
+commands:
+  global:
+    chat_input:
+      - name: "suggestion"
+        description: "Suggest things for the server!"
+        default_member_permissions: 0
+        integration_types: [0]
+        contexts: [0]
+        options:
+          - name: "info"
+            type: 1
+            description: "Suggestion info/stats!"
+            options:
+              - name: "suggestion"
+                description: "Suggestion ID"
+                type: 4
+                required: false
+                autocomplete: false
+              - name: "user"
+                description: "Complete user stats"
+                type: 6
+                required: false
+
+          - name: "create"
+            type: 1
+            description: "Create a New Suggestion"
+
+      - name: "deny"
+        default_member_permissions: 8
+        integration_types: [ 0 ]
+        contexts: [ 0 ]
+        description: "Deny a Suggestion."
+        options:
+          - name: "suggestion_id"
+            description: "ID of the Suggestion"
+            type: 4
+            required: true
+            autocomplete: false
+          - name: "reason"
+            description: "Why it's being denied."
+            required: false
+            type: 3
+
+      - name: "approve"
+        default_member_permissions: 8
+        integration_types: [ 0 ]
+        contexts: [ 0 ]
+        description: "Approve a Suggestion."
+        options:
+          - name: "suggestion_id"
+            description: "ID of the Suggestion"
+            type: 4
+            required: true
+            autocomplete: false
+    message: {}
+    user: {}

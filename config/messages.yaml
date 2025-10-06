@@ -1,0 +1,33 @@
+suggestions:
+  shall_not_pass_potential_gifs:
+    - "https://c.tenor.com/ogSi8PDx8EYAAAAd/tenor.gif" # Hazbin
+    - "https://c.tenor.com/Sqlcm80D2r0AAAAC/tenor.gif" # Penguin Staff
+    - "https://c.tenor.com/VIWxOdSDqasAAAAd/tenor.gif" # Starwars NOOOOO
+    - "https://c.tenor.com/jh4EA2d5pIcAAAAd/tenor.gif" # Marin Sadge
+    - "https://c.tenor.com/wxQfKeFi2fQAAAAd/tenor.gif" # Gojo's Hello
+    - "https://c.tenor.com/_1RzJfOAt5EAAAAd/tenor.gif" # Rebooting Nadle
+    - "https://c.tenor.com/ogttm_M9gRwAAAAd/tenor.gif" # Boss?
+    - "https://c.tenor.com/XCKZfD-GO48AAAAd/tenor.gif" # Cat 401?
+  modal:
+    header_text_display: |-
+      This is the form to make a new suggestion.
+      Please ensure before submitting that your suggestion is __**not**__ a duplicate, otherwise it will be rejected by a <@&702163989286617129>.
+      -# You **are** allowed to use markdown in the suggestion body! *Here is an [Markdown Visualizer](https://jbt.github.io/markdown-editor/) if you need one.*
+  shall_not_pass:
+    type: 17
+    components:
+      - type: 10
+        content: "# **YOU SHALL NOT PASS**"
+      - type: 14
+        divider: true
+        spacing: 1
+      - type: 12
+        items: []
+#          - media:
+##              url: "https://c.tenor.com/Sqlcm80D2r0AAAAC/tenor.gif"
+#              url: "https://c.tenor.com/ogSi8PDx8EYAAAAd/tenor.gif"
+      - type: 14
+        divider: false
+        spacing: 1
+      - type: 10
+        content: "-# `ERROR` Permission Denied"

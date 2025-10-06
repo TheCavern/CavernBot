@@ -1,0 +1,47 @@
+# Discord text command prefix
+prefix: '?'
+#Disco stuff, ignore ig?
+commands_enabled: false
+bot:
+  plugins:
+    - CavernBot.plugins.core
+    - CavernBot.plugins.suggestions
+
+intents: 515
+
+# Whether all the commands should be registered on startup.
+skip_command_registration: false
+
+# Bot Config
+discord:
+  # Suggestions sub config
+  suggestions:
+    # Whether to allow new suggestions to come in.
+    allow_new: true
+    # Role that is banned from suggesting things
+    banned_role: 0000000000000000000
+    # Where pending suggestions go
+    pending_channel: 0000000000000000000
+    # Where approved suggestions go
+    approved_channel: 0000000000000000000
+    # Where Denied suggestions go
+    denied_channel: 0000000000000000000
+    # Where voting happens.
+    vote_channel: 0000000000000000000
+    # Huh?
+    sinfo_roles: [0000000000000000000]
+  # Tickets!
+  tickets:
+    base_channel: 0000000000000000000
+  # Logging
+  logging_channel: 0000000000000000000
+  # Channel dedicated for just media!
+  media_channel: 0000000000000000000
+  # Staff Roles
+  staff_roles: [0000000000000000000, 0000000000000000000, 0000000000000000000]
+
+# Asset Config for fun graphs!
+graphs:
+  pie_chart_asset: "BLANK.png"
+  bar_graph_asset: "BLANK2.png"
+  sunburst_graph_asset: "BLANK.png"

@@ -1,0 +1,39 @@
+services:
+  bot:
+    build: .
+    image: cavernbot:in-dev
+    restart: always
+    env_file:
+      - .env
+    # If you're not a fan of .env's ig...
+#    environment:
+#      - DISCORD_TOKEN="`'https://discord.dev'`"
+#      - DB_DATABASE=cavernbot
+#      - DB_USERNAME=cavernbot
+#      - DB_PASSWORD=SuperSecurePassword...OrNot?I'mJustADeveloper?
+#      - DB_HOST=mariadb
+#      - DB_PORT=3306
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      - "./assets:/app/assets"
+      - "./config:/app/config"
+      # For when literally everything breaks, and you literally hate your life...
+      #- "./:/app"
+
+  # Comment this out if you have a prod server to not waste space and resources :D
+  mariadb:
+    image: mariadb:latest
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD="Youknow...Ican'tstartthiscontainerwithoutarootpassword...goodluckguessingthisone"
+      - MARIADB_DATABASE=cavernbot
+      - MARIADB_PASSWORD=SuperSecurePassword...OrNot?I'mJustADeveloper?
+      - MARIADB_USER=cavernbot
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3

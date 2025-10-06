@@ -1,16 +1,50 @@
 import re
-from disco.bot import Bot, Plugin
-from disco.gateway.events import MessageCreate, InteractionCreate
 
-from CavernBot.constants import Constants
+import yaml
+from disco.bot import Plugin
+from disco.gateway.events import MessageCreate
+from disco.types.application import ApplicationCommandTypes
+from dotenv import load_dotenv
+
+from CavernBot.constants import Constants, cfg
 
 SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
 
 
 class CorePlugin(Plugin):
     def load(self, ctx):
+
+        # Load all env variables.
+        load_dotenv()
+
         super(CorePlugin, self).load(ctx)
 
+    @Plugin.listen("Ready")
+    def on_ready(self, event):
+        self.log.info(f"Logged into discord as {self.bot.client.state.me}")
+
+        if cfg.skip_command_registration:
+            self.log.info("Skipping command registration due to config value being set.")
+
+        # Register all commands globally.
+        with open("./config/commands.yaml", "r", encoding="utf-8") as raw_command_yaml:
+            raw_commands = yaml.safe_load(raw_command_yaml)
+
+        to_register = []
+        for global_type, global_type_commands in raw_commands['commands']['global'].items():
+            if len(global_type_commands):
+                self.log.info(f"Found {len(global_type_commands)} {global_type} command(s) to register...")
+                for command in global_type_commands:
+                    command["type"] = getattr(ApplicationCommandTypes, global_type.upper())
+                    to_register.append(command)
+
+        self.log.info(f"Attempting to register {len(to_register)} commands...")
+
+        updated_commands = self.client.api.applications_global_commands_bulk_overwrite(to_register)
+        self.log.info(f"Successfully Registered {len(updated_commands)} commands!")
+
+
+    # Listener for media only channel
     @Plugin.listen('MessageCreate')
     def media_channel(self, event: MessageCreate):
         if event.channel.id != Constants.MEDIA_CHANNEL:
@@ -18,86 +52,3 @@ class CorePlugin(Plugin):
         if hasattr(event.message, 'attachments') and len(event.message.attachments) > 0:
             return
         event.message.delete()
-
-    # Basic command handler
-    @Plugin.listen('InteractionCreate')
-    def on_interaction_create(self, event: InteractionCreate):
-        if event.type == 3:
-            if hasattr(event.data, 'custom_id'):
-                if event.data.custom_id.startswith('deny_') or event.data.custom_id.startswith('approve_'):
-                    idata = SUGGESTION_RE.findall(event.data.custom_id)
-                    mode, id = idata[0][0], int(idata[0][1])
-
-                    self.bot.plugins['SuggestionsPlugin'].handle_button(event, mode, id)
-
-        command_name = event.data.name
-
-        if command_name == 'deny':
-            sid = None
-            reason = None
-
-            for option in event.data.options:
-                if option.name == 'id':
-                    sid = option.value
-                if option.name == 'reason':
-                    reason = option.value
-
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
-            cmd.func(event, sid, reason=reason)
-
-        if command_name == 'suggestion':
-            return event.reply(type=4, content="Suggestions are currently closed. We’re actively working on implementing the community approved suggestions!", flags=(1 << 6))
-            if Constants.SUGGESTIONS_BANNED_ROLE in event.m.roles:
-                return event.reply(type=4, content="**ERROR**: Permission Denied (`You have been banned from making suggestions.`)", flags=(1 << 6))
-
-
-            area = None
-            description = None
-            example = None
-
-            for option in event.data.options:
-                if option.name == 'area':
-                    area = option.value
-                if option.name == 'description':
-                    description = option.value
-
-            if hasattr(event.data, 'resolved') and hasattr(event.data.resolved, 'attachments'):
-                for k in event.data.resolved.attachments:
-                    example = event.data.resolved.attachments.get(k).url
-                    break
-
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
-            cmd.func(event, area, description, example)
-
-        if command_name == 'sinfo':
-            id = None
-            user = None
-            has_perms = None
-
-            for x in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
-                if x in event.m.roles:
-                    has_perms = True
-                if event.m.user.id == x:
-                    has_perms = True
-
-            for option in event.data.options:
-                if option.name == 'id':
-                    id = option.value
-                if option.name == 'user':
-                    user = event.data.resolved.users.get(option.value)
-
-            if id == None and user == None:
-                user = event.m.user
-
-            if id != None and user != None:
-                event.reply(type=4, content=f"You may not specify both a Suggestion ID and a User to search.", flags=(1 << 6))
-                return
-
-            if not has_perms and user != None and user != event.m.user:
-                event.reply(type=4, content="**Error**: Permission Denied.",
-                            flags=(1 << 6))
-                return
-
-            cmd = next((cmd for cmd in self.bot.plugins['SuggestionsPlugin'].commands if cmd.name == command_name), None)
-            cmd.func(event, id, user, perms=has_perms)
-        return

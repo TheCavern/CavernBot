@@ -5,3 +5,7 @@ src
 CavernBot/__pycache__
 CavernBot/plugins/__pycache__
 CavernBot/models/__pycache__
+.env
+/assets/*
+__pycache__
+*.ipynb

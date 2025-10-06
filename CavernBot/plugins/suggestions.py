@@ -1,20 +1,24 @@
 import random
-import re
+
 import gevent
+from disco.api.http import APIException
 from disco.bot import Plugin
-from disco.api.http import Routes
+from disco.types.application import InteractionType, InteractionCallbackType
 
-from disco.types.message import MessageEmbed, ActionRow
+from disco.types.message import ActionRow, SelectOption, SelectMenuComponent, \
+    TextDisplayComponent, MessageFlags, \
+    ContainerComponent, ButtonComponent, ButtonStyles
 
-from datetime import datetime
-
+from CavernBot.models import datetime_utc
 from CavernBot.models.Suggestions import Suggestion, SuggestionVote
-from CavernBot.constants import Constants
+from CavernBot.constants import Constants, cfg, send_you_dont_have_the_right, SuggestionStatus
 
 from gevent.queue import JoinableQueue
 
-SUGGESTION_RE = re.compile(r"([a-zA-Z]*)_(\d*)")
-
+from CavernBot.utils.components import suggestion_info_ui_suggestion, suggestion_info_ui_user, pending_suggestion, \
+    separator_large, separator_small, suggestion_create_modal, community_voting_suggestion, suggestion_deny, \
+    suggestion_denied_user_message, suggestion_community_voting_complete
+from CavernBot.utils.graphs import suggestion_stats, suggestion_user_stats
 
 class Vote:
     suggestion = None
@@ -27,20 +31,11 @@ class Vote:
         self.type = type
 
 
-class SuggestionTypes(object):
-    PENDING = 0
-    DENIED = 1
-    VOTING = 2
-    APPROVED = 3
-    IMPLEMENTED = 4
-    FORCED_DENIED = 5
-    FORCED_APPROVED = 6
-
-
 def check_user(user):
     if user.id in Constants.SUGGESTIONS_SINFO_PERMISSIONS:
         return True
 
+    return False
 
 class SuggestionsPlugin(Plugin):
     def load(self, ctx):
@@ -92,6 +87,7 @@ class SuggestionsPlugin(Plugin):
                     self.vote_queue.task_done()
         self.log.info("Vote Worker Shutting Down.")
 
+    # Workers Schedule
     @Plugin.schedule(60)
     def update_vote_workers(self):
         if self.is_shutdown or self.is_starting:
@@ -111,9 +107,9 @@ class SuggestionsPlugin(Plugin):
         except:
             pass
 
-    @Plugin.schedule(3600)
+    @Plugin.schedule(3600, init=False)
     def vote_check_schedule(self):
-        for suggest in Suggestion.select().where(Suggestion.type == SuggestionTypes.VOTING):
+        for suggest in Suggestion.select().where(Suggestion.status == SuggestionStatus.VOTING):
             positive = len(
                 SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.suggestion_id == suggest.id))
             negative = len(
@@ -123,284 +119,347 @@ class SuggestionsPlugin(Plugin):
             if total_votes < 40:
                 continue
 
-            if total_votes >= 60 and positive >= int(total_votes * .70):
-                suggest.type = SuggestionTypes.APPROVED
-                suggest.downvotes = negative
-                suggest.upvotes = positive
+            try:
+                channel_id, message_id = suggest.message
+            except:
+                continue
 
-                self.bot.client.api.channels_messages_delete(Constants.SUGGESTIONS_VOTE_CHANNEL, suggest.message_id)
-                user = self.bot.client.api.users_get(suggest.user_id)
+            self.bot.client.api.channels_messages_delete(channel_id, message_id)
+            user = self.bot.client.api.users_get(suggest.user_id)
+
+            if total_votes >= 60 and positive >= int(total_votes * .70):
+                suggest.status = SuggestionStatus.APPROVED
 
                 channel = self.bot.client.api.channels_get(Constants.SUGGESTIONS_APPROVED_CHANNEL)
 
-                e = MessageEmbed()
-                e.set_footer(text=f"{user}", icon_url=user.get_avatar_url())
-                if suggest.example:
-                    e.set_image(url=suggest.example)
-                e.title = f"ID: {suggest.id} | {suggest.area.title()}"
-                e.description = f"{suggest.description}\n\n**__Final Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (positive / total_votes * 100)}%`)\nNegative: **{negative}** (`{'%.2f' % (negative / total_votes * 100)}%`) "
-                e.timestamp = suggest.created_at.isoformat()
+                components = suggestion_community_voting_complete(suggest, user)
 
+                vote_graph = suggestion_stats(suggestion_id=suggest.id)
+
+                new_message = channel.send_message(components=components, flags=MessageFlags.IS_COMPONENTS_V2, attachments=[(f"final_graph_{suggest.id}.png", vote_graph.getvalue())])
+
+                suggest.message = f"{new_message.channel.id}/{new_message.id}"
                 suggest.save()
 
-                channel.send_message(content="Community Approved", embeds=[e])
-
             elif total_votes >= 40 and negative >= int(total_votes * .80):
-                suggest.type = SuggestionTypes.DENIED
-                suggest.downvotes = negative
-                suggest.upvotes = positive
-
-                self.bot.client.api.channels_messages_delete(Constants.SUGGESTIONS_VOTE_CHANNEL, suggest.message_id)
-                user = self.bot.client.api.users_get(suggest.user_id)
+                suggest.status = SuggestionStatus.DENIED
 
                 channel = self.bot.client.api.channels_get(Constants.SUGGESTIONS_DENIED_CHANNEL)
 
-                e = MessageEmbed()
-                e.set_footer(text=f"{user}",
-                             icon_url=user.get_avatar_url())
-                if suggest.example:
-                    e.set_image(url=suggest.example)
-                e.title = f"ID: {suggest.id} | {suggest.area.title()}"
-                e.description = f"{suggest.description}\n\n**__Final Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (positive / total_votes * 100)}%`)\nNegative: **{negative}** (`{'%.2f' % (negative / total_votes * 100)}%`) "
-                e.timestamp = suggest.created_at.isoformat()
+                components = suggestion_community_voting_complete(suggest, user, outcome="Denied")
 
+                vote_graph = suggestion_stats(suggestion_id=suggest.id)
+
+                new_message = channel.send_message(components=components, flags=MessageFlags.IS_COMPONENTS_V2,
+                                                   attachments=[
+                                                       (f"final_graph_{suggest.id}.png", vote_graph.getvalue())])
+
+                suggest.message = f"{new_message.channel.id}/{new_message.id}"
                 suggest.save()
 
-                channel.send_message(content="Community Denied", embeds=[e])
             else:
                 continue
 
-    def handle_button(self, event, mode, suggestion_id):
-        s = Suggestion.get(id=suggestion_id)
-        s.approving_moderator = event.member.id
 
-        event.reply(type=6)
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MESSAGE_COMPONENT and "_" in e.data.custom_id and e.data.custom_id.split("_")[0] in ["upvote", "downvote"])
+    def on_voting_button(self, event):
+        # Get whether we are upvoting or downvoting, and then getting the suggestion ID.
+        data = event.data.custom_id.split("_")
 
-        channel = event.guild.channels.get(
-            Constants.SUGGESTIONS_DENIED_CHANNEL if mode == 'deny' else Constants.SUGGESTIONS_VOTE_CHANNEL)
+        # Throw the issue at the queue worker :). Thanks Nadle! ~Justin
+        self.vote_queue.put(Vote(data[1], event, data[0]))
 
-        s.type = SuggestionTypes.DENIED if mode == 'deny' else SuggestionTypes.VOTING
-        member = event.guild.get_member(s.user_id)
-        e = MessageEmbed()
-        if mode == 'deny':
-            e.set_author(name=f"{member.user}", icon_url=member.user.get_avatar_url())
-            e.set_footer(text=f"Denied By: {event.member.user}",
-                         icon_url=event.member.user.get_avatar_url())
-        else:
-            e.set_footer(text=f"{member.user}",
-                         icon_url=member.user.get_avatar_url())
-            if s.example:
-                e.set_image(url=s.example)
-        e.title = f"ID: {s.id} | {s.area.title()}"
-        e.description = s.description
-        e.timestamp = s.created_at.isoformat()
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.APPLICATION_COMMAND and e.data.name == "suggestion")
+    def base_suggestion_command(self, event):
 
-        msg = None
-        if mode == 'approve':
-            buttons = ActionRow()
-            buttons.add_component(custom_id=f"upvote_{s.id}", type=2, label="Upvote", style=3)
-            buttons.add_component(custom_id=f"downvote_{s.id}", type=2, label="Downvote", style=4)
+        match event.data.options[0].name:
+            case "info":
+                root_command = event.data.options[0]
 
-            msg = channel.send_message(embeds=[e], components=[buttons])
-        else:
-            msg = channel.send_message(embeds=[e])
 
-        s.message_id = msg.id
-        s.save()
+                if len(root_command.options) > 1:
+                    return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content="`ERROR` You may not supply both a suggestion id and user.", flags=MessageFlags.EPHEMERAL)
 
-        if mode == 'deny':
-            self.bot.client.api.http(Routes.CHANNELS_MESSAGES_MODIFY,
-                                     dict(channel=Constants.SUGGESTIONS_PENDING_CHANNEL, message=event.message.id),
-                                     json={"components": [], "embeds": [], "allowed_mentions": {"parse": []},
-                                           "content": f"**Suggestion** `{s.id}`: Denied by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{msg.id} "
-                                           })
-            try:
-                member.user.open_dm().send_message(f"An update on Suggestion #**{s.id}**:\nIt has been denied.")
-            except:
-                pass
-        else:
-            self.bot.client.api.http(Routes.CHANNELS_MESSAGES_MODIFY,
-                                     dict(channel=Constants.SUGGESTIONS_PENDING_CHANNEL, message=event.message.id),
-                                     json={"components": [], "embeds": [], "allowed_mentions": {"parse": []},
-                                           "content": f"**Suggestion** `{s.id}`: Approved by <@{event.member.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_VOTE_CHANNEL}/{msg.id} "
-                                           })
+                if not len(root_command.options):
+                    option = "user"
+                    value = event.member.id
+                else:
+                    option = root_command.options[0].name
+                    value = root_command.options[0].value
 
-    @Plugin.listen('InteractionCreate')
-    def vote(self, event):
-        # self.vote_queue.put()
-        if event.type == 3:
-            if hasattr(event.data, 'custom_id'):
-                if event.data.custom_id.startswith('upvote_') or event.data.custom_id.startswith('downvote_'):
-                    idata = SUGGESTION_RE.findall(event.data.custom_id)
-                    mode, id = idata[0][0], int(idata[0][1])
+                has_info_permissions_by_role = (len(set(event.member.roles) & set(
+                    Constants.SUGGESTIONS_SINFO_PERMISSIONS)) > 0)
 
-                    self.vote_queue.put(Vote(id, event, mode))
+                has_info_permissions_by_user = (event.member.id in Constants.SUGGESTIONS_SINFO_PERMISSIONS)
 
-    @Plugin.command('suggestion', '<area:str> <description:str...>')
-    def suggestion(self, event, area, description, example):
-        return event.reply(type=4, content="Suggestions are currently closed. We’re actively working on implementing the community approved suggestions!", flags=(1 << 6))
-        s = Suggestion.create(user_id=event.m.id, area=area, description=description)
-        e = MessageEmbed()
-        e.set_footer(text=event.m.user,
-                     icon_url=event.m.user.get_avatar_url())
-        e.title = f"ID: {s.id} | {area.title()}"
-        e.description = description
-        e.timestamp = datetime.utcnow().isoformat()
-        if example:
-            e.set_image(url=example)
-            s.example = example
+                match option:
+                    case "suggestion":
+                        s = Suggestion.get_or_none(id=value)
+                        if not s:
+                            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content=f"`ERROR`: Suggestion ID `{value}` does not exist.", flags=MessageFlags.EPHEMERAL)
 
-        channel = event.guild.channels.get(Constants.SUGGESTIONS_PENDING_CHANNEL)
+                        if s.user_id != event.member.id and not has_info_permissions_by_role and not has_info_permissions_by_user:
+                            return send_you_dont_have_the_right(event)
 
-        buttons = ActionRow()
-        buttons.add_component(custom_id=f"approve_{s.id}", type=2, label="Approve", style=2, emoji={"name": "✅"})
-        buttons.add_component(custom_id=f"deny_{s.id}", type=2, label="Deny", style=2, emoji={"name": "🚫"})
+                        stats_graph_buffer = suggestion_stats(suggestion_id=s)
+                        components = suggestion_info_ui_suggestion(event, s, self.bot.client.api.users_get(s.user_id))
 
-        message = channel.send_message(embeds=[e], components=[buttons])
-        s.message_id = message.id
-        s.save()
+                        event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, components=components, attachments=[(f"stats_{s.id}.png", stats_graph_buffer.getvalue())], flags=(MessageFlags.IS_COMPONENTS_V2 ^ MessageFlags.EPHEMERAL))
 
-        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been submitted for review by a moderator!", flags=(1 << 6))
+                        stats_graph_buffer.close()
 
-        return
+                        return None
+                    case "user":
+                        if value != event.member.id and not has_info_permissions_by_role and not has_info_permissions_by_user:
+                            return send_you_dont_have_the_right(event)
 
-    @Plugin.command('deny', '<id:int> [reason:str...]')
-    def cmd_deny(self, event, id, reason=None):
+                        user_vote_stats = suggestion_stats(user_id=value)
+                        user_stats = suggestion_user_stats(user_id=value)
+                        components = suggestion_info_ui_user(event, self.bot.client.api.users_get(value))
 
-        s = Suggestion.get(id=id)
-        s.type = SuggestionTypes.DENIED
+                        event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, components=components,
+                                    attachments=[(f"suggestion_stats_{value}.png", user_stats.getvalue()), (f"vote_stats_{value}.png", user_vote_stats.getvalue())],
+                                    flags=(MessageFlags.IS_COMPONENTS_V2 ^ MessageFlags.EPHEMERAL))
 
-        channel = event.guild.channels.get(Constants.SUGGESTIONS_DENIED_CHANNEL)
-        member = event.guild.get_member(s.user_id)
+                        user_vote_stats.close()
+                        user_stats.close()
 
-        e = MessageEmbed()
-        e.set_author(name=f"{member.user.username}#{member.user.discriminator}",
-                     icon_url=member.user.get_avatar_url())
-        e.set_footer(text=f"Denied By: {event.m.user.username}#{event.m.user.discriminator} | ID: {s.id}", icon_url=event.m.user.get_avatar_url())
-        e.title = f"ID: {s.id} | {s.area.title()}"
-        e.description = s.description
-        e.timestamp = datetime.utcnow().isoformat()
+                        return None
 
-        denied = channel.send_message(embeds=[e])
 
-        msg = f"**Suggestion** `{s.id}`: Denied by <@{event.m.id}>\nMoved to: https://discord.com/channels/{event.guild.id}/{Constants.SUGGESTIONS_DENIED_CHANNEL}/{denied.id}"
-        dm_msg = f"An update on Suggestion #**{s.id}**:\nIt has been denied."
+            case "create":
 
-        if reason:
-            msg += f"\n**Reason**:\n```{reason}```"
-            dm_msg += f"\nReason:\n```{reason}```"
+                if Constants.SUGGESTIONS_BANNED_ROLE in event.member.roles:
+                    return send_you_dont_have_the_right(event, reason="`ERROR`: You're suggestion banned.")
 
-        self.bot.client.api.http(Routes.CHANNELS_MESSAGES_MODIFY,
-                                 dict(channel=Constants.SUGGESTIONS_PENDING_CHANNEL, message=s.message_id),
-                                 json={"components": [], "embeds": [], "allowed_mentions": {"parse": []},
-                                       "content": msg
-                                       })
+                if not cfg.discord.suggestions.allow_new:
+                    return send_you_dont_have_the_right(event, reason="**New suggestions are currently disabled.**")
 
-        s.message_id = denied.id
-        s.save()
+                modal = suggestion_create_modal(event)
+
+                return event.reply(type=InteractionCallbackType.MODAL, modal=modal)
+        return None
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.APPLICATION_COMMAND and e.data.name == "deny")
+    def suggestion_deny_command(self, event):
+
+        suggestion = Suggestion.get_or_none(id=event.data.options[0].value)
+        reason = None
+        if len(event.data.options) == 2:
+            reason = event.data.options[1].value
+
+        if suggestion is None or suggestion.status != SuggestionStatus.PENDING:
+            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content=f"`ERROR` Suggestion `{event.data.options[0].value}` does not exist, or has already been reviewed.", flags=MessageFlags.EPHEMERAL)
+
+        return self.update_pending_suggestion(event, from_command=True, suggestion=suggestion, next_step="deny", reason=reason)
+
+
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.APPLICATION_COMMAND and e.data.name == "approve")
+    def suggestion_approve_command(self, event):
+        suggestion = Suggestion.get_or_none(id=event.data.options[0].value)
+
+        if suggestion is None or suggestion.status != SuggestionStatus.PENDING:
+            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE,
+                               content=f"`ERROR` Suggestion `{event.data.options[0].value}` does not exist, or has already been reviewed.", flags=MessageFlags.EPHEMERAL)
+
+        return self.update_pending_suggestion(event, from_command=True, suggestion=suggestion, next_step="approve")
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MODAL_SUBMIT and e.data.custom_id == "suggestion_modal")
+    def suggestion_modal_submit(self, event):
+
+        category = event.data.components[1].component.values[0]
+        suggestion_body = event.data.components[2].component.value
+
+        if Constants.MASKED_LINKS_RE.match(suggestion_body):
+            suggestion_body = Constants.MASKED_LINKS_RE.sub(suggestion_body, "`*FILTERED*`")
+
+        select_options = [
+        ]
+
+        category_config = [cat for cat in cfg.discord.suggestions.categories if cat.get("value") == category][0]
+
+        option = SelectOption(label=category_config.get("name"), value=category_config.get("value"), default=True)
+        if category_config.get("emote"):
+            matches = Constants.EMOJI_RE.match(category_config.get("emote"))
+            if matches:
+                option.emoji = {
+                    "id": matches.group(3),
+                    "name": matches.group(2),
+                    "animated": matches.group(1)
+                }
+            else:
+                option.emoji = {
+                    "name": category_config.get("emote")
+                }
+
+        select_options.append(option)
+
+        category_menu = SelectMenuComponent(custom_id="category_menu", required=False, disabled=True)
+        category_menu.options = select_options
+
+        container = ContainerComponent()
+        container.components = [
+            ActionRow(
+                components=[
+                    category_menu
+                ]
+            ),
+            separator_small,
+            TextDisplayComponent(content=suggestion_body)
+        ]
+
+        components = [
+            TextDisplayComponent(content=f"# Review Your Suggestion"),
+            separator_large,
+            container,
+            ActionRow(
+                components=[
+                    ButtonComponent(style=ButtonStyles.SUCCESS, label="Confirm", custom_id=f"suggestion_setup_confirm"),
+                    ButtonComponent(style=ButtonStyles.DANGER, label="Deny", custom_id=f"suggestion_setup_deny"),
+                ]
+            ),
+        ]
+
+        return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, components=components, flags=(MessageFlags.EPHEMERAL ^ MessageFlags.IS_COMPONENTS_V2))
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MESSAGE_COMPONENT and e.data.custom_id.startswith("suggestion_setup"))
+    def suggestion_setup(self, event):
+
+        part = event.data.custom_id.replace("suggestion_setup_", "")
+
+        container = event.message.components[2]
+
+        selected_category = container.components[0].components[0].options[0].value
+        body = container.components[2].content
+
+        match part:
+            case "confirm":
+
+                suggestion = Suggestion.create(user_id=event.member.id, category=selected_category, description=body)
+
+                components = pending_suggestion(event, suggestion)
+
+                message = self.client.api.channels_messages_create(Constants.SUGGESTIONS_PENDING_CHANNEL, components=components,
+                                                                   flags=MessageFlags.IS_COMPONENTS_V2)
+
+                suggestion.message = f"{message.channel.id}/{message.id}"
+
+                suggestion.save()
+
+                event.reply(type=6)
+                event.edit(components=[TextDisplayComponent(content=f"Suggestion `{suggestion.id}` successfully submitted!")])
+
+                return None
+
+            case "deny":
+                container = event.message.components[2]
+
+                selected_category = container.components[0].components[0].options[0].value
+                body = container.components[2].content
+
+                modal = suggestion_create_modal(event, body=body, selected_category=selected_category)
+
+                return event.reply(type=InteractionCallbackType.MODAL, modal=modal)
+        return None
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MESSAGE_COMPONENT and e.data.custom_id.startswith("update_pending_"))
+    def update_pending_suggestion(self, event, from_command=False, suggestion=None, next_step=None, reason=None):
+
+        suggestion = suggestion or Suggestion.get_or_none(int(event.data.custom_id.replace("update_pending_", "")))
+        next_step = next_step or event.data.values[0]
+
+        channel_id, smessage = suggestion.message.split("/")
+
+        pending_message = self.client.api.channels_messages_get(channel_id, smessage)
+
+        if not suggestion:
+            return
+
+        match next_step:
+            case "approve":
+                suggestion.status = SuggestionStatus.VOTING
+                suggestion.reviewing_moderator = event.member.id
+
+                components = community_voting_suggestion(event, suggestion, self.bot.client.api.users_get(suggestion.user_id))
+
+                message = self.client.api.channels_messages_create(Constants.SUGGESTIONS_VOTE_CHANNEL, components=components, flags=MessageFlags.IS_COMPONENTS_V2)
+
+                message.start_thread(f"Suggestion {suggestion.id} Thread")
+
+                suggestion.message = f"{message.channel.id}/{message.id}"
+
+                suggestion.save()
+
+                event.reply(type=InteractionCallbackType.DEFERRED_UPDATE_MESSAGE)
+
+                return pending_message.delete()
+
+            case "deny":
+                suggestion.status = SuggestionStatus.DENIED
+                suggestion.reviewing_moderator = event.member.id
+
+                user = self.client.api.users_get(suggestion.user_id)
+
+                components = suggestion_deny(event, suggestion, user)
+
+                message = self.client.api.channels_messages_create(Constants.SUGGESTIONS_DENIED_CHANNEL, components=components,
+                                                                   flags=MessageFlags.IS_COMPONENTS_V2)
+
+                suggestion.message = f"{message.channel.id}/{message.id}"
+
+                suggestion.save()
+
+                if event.type == InteractionType.MESSAGE_COMPONENT:
+                    event.reply(type=InteractionCallbackType.DEFERRED_UPDATE_MESSAGE)
+                else:
+                    event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content=f"Suggestion {suggestion.id} successfully denied!", flags=MessageFlags.EPHEMERAL)
+
+                pending_message.delete()
+
+                try:
+                    user.open_dm().send_message(components=suggestion_denied_user_message(suggestion, reason=reason), flags=MessageFlags.IS_COMPONENTS_V2)
+                except APIException as e:
+                    self.log.info(f"[Suggestion {suggestion.id}] Unable to DM {user.username} ({user.id}) about suggestion denial.")
+
+                return None
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MESSAGE_COMPONENT and e.data.custom_id.startswith("update_approved_"))
+    def on_approved_suggestion_menu(self, event):
+
+        depr_to_new = {
+            "cm_approved": SuggestionStatus.APPROVED,
+            "implemented": SuggestionStatus.IMPLEMENTED,
+            "wip": SuggestionStatus.WORK_IN_PROGRESS,
+            "wni": SuggestionStatus.NOT_IMPLEMENTING,
+        }
+
+        is_staff = (len(set(event.member.roles) & set(
+            Constants.STAFF_ROLES)) > 0)
+
+        if not is_staff:
+            return send_you_dont_have_the_right(event)
+
+        suggestion = Suggestion.get_or_none(int(event.data.custom_id.replace("update_approved_", "")))
+        old_status = suggestion.status
 
         try:
-            member.user.open_dm().send_message(dm_msg)
-        except:
-            pass
+            new_status = int(event.data.values[0])
+        except Exception:
+            new_status = depr_to_new[event.data.values[0]]
 
-        event.reply(type=4, content=f"Suggestion ID: `{s.id}` has been denied!", flags=(1 << 6))
+        if not suggestion:
+            event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content="`ERROR`: Suggestion not found?", flags=MessageFlags.EPHEMERAL)
 
-    @Plugin.command('sinfo', '[id:int] [user:user|snowflake]')
-    def cmd_sinfo(self, event, id, user, perms=False):
+        if new_status == suggestion.status:
+            return event.reply(type=InteractionCallbackType.DEFERRED_UPDATE_MESSAGE)
+        else:
+            suggestion.status = new_status
+            suggestion.updated_by = event.member.id
+            suggestion.updated_at = datetime_utc()
+            suggestion.save()
 
-        def zero_check(num, tv):
-            if num == 0:
-                return 0
-            else:
-                return num / tv * 100
+            user = self.client.api.users_get(suggestion.user_id)
+            components = suggestion_community_voting_complete(suggestion, user, outcome="Approved", old_status=old_status, event=event)
 
-        if id:
-            s = Suggestion.get(id=id)
-            if not s:
-                event.reply(type=4, content=f"**Error**: Suggestion ID `{id}` does not exist.", flags=(1 << 6))
-                return
-            elif not perms and s.user_id != event.m.user.id:
-                event.reply(type=4, content=f"**Permission Denied**: Suggestion ID `{id}` is not your own.", flags=(1 << 6))
-                return
-            else:
-
-                positive = len(
-                    SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.suggestion_id == s.id))
-                negative = len(
-                    SuggestionVote.select().where(SuggestionVote.vote == -1,
-                                                  SuggestionVote.suggestion_id == s.id))
-                total_votes = positive + negative
-
-                member = event.guild.get_member(s.user_id)
-                e = MessageEmbed()
-                e.set_footer(text=f"{member.user}",
-                             icon_url=member.user.get_avatar_url())
-                if s.example:
-                    e.set_image(url=s.example)
-                e.title = f"ID: {s.id} | {s.area.title()}"
-
-                e.description = f"{s.description}\n\n**__Current Vote Stats__**:\nPositive: **{positive}** (`{'%.2f' % (zero_check(positive, total_votes))}%`)\nNegative: **{negative}** (`{'%.2f' % (zero_check(negative, total_votes))}%`) "
-                e.timestamp = s.created_at.isoformat()
-
-                event.reply(type=4, embeds=[e],
-                            flags=(1 << 6))
-        elif user:
-
-            e = MessageEmbed()
-            e.set_author(name=f"{user}", icon_url=user.get_avatar_url())
-
-            suggestions = Suggestion.select().where(Suggestion.user_id == user.id)
-
-            txt = []
-            pending = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.PENDING])
-            denied = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.DENIED])
-            vote = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.VOTING])
-            approved = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.APPROVED])
-            implimented = len([sugg for sugg in suggestions if sugg.type == SuggestionTypes.IMPLEMENTED])
-
-            if len(suggestions) == 0:
-                txt.append("*No Suggestions.*")
-
-            for s in suggestions:
-                channels = {
-                    0: Constants.SUGGESTIONS_PENDING_CHANNEL,
-                    1: Constants.SUGGESTIONS_DENIED_CHANNEL,
-                    2: Constants.SUGGESTIONS_VOTE_CHANNEL,
-                    3: Constants.SUGGESTIONS_APPROVED_CHANNEL
-                }
-                if perms:
-                    txt.append(f"[{s.id}](https://discord.com/channels/{event.guild.id}/{channels[s.type]}/{s.message_id})")
-                elif s.type == SuggestionTypes.VOTING:
-                    txt.append(
-                        f"[{s.id}](https://discord.com/channels/{event.guild.id}/{channels[s.type]}/{s.message_id})")
-                else:
-                    txt.append(f"{s.id}")
-
-            positive = len(
-                SuggestionVote.select().where(SuggestionVote.vote == 1, SuggestionVote.user_id == user.id))
-            negative = len(
-                SuggestionVote.select().where(SuggestionVote.vote == -1,
-                                              SuggestionVote.user_id == user.id))
-            total_votes = positive + negative
-
-            votes = [
-                f"Positive: **{positive}** `{'%.2f' % (zero_check(positive, total_votes))}%`",
-                f"Negative: **{negative}** `{'%.2f' % (zero_check(negative, total_votes))}%`"
-            ]
-
-            total_results = [
-                f"Pending: **{pending}** `{'%.2f' % (zero_check(pending, len(suggestions)))}%`",
-                f"Denied: **{denied}** `{'%.2f' % (zero_check(denied, len(suggestions)))}%`",
-                f"Up For Vote: **{vote}** `{'%.2f' % (zero_check(vote, len(suggestions)))}%`",
-                f"Approved: **{approved}** `{'%.2f' % (zero_check(approved, len(suggestions)))}%`",
-                f"Implemented: **{implimented}** `{'%.2f' % (zero_check(implimented, len(suggestions)))}%`",
-            ]
-
-            e.add_field(name=f"Total Suggestions ({len(suggestions)})", value=",".join(txt), inline=True)
-            e.add_field(name=f"Total Votes Casted ({total_votes})", value="\n".join(votes), inline=True)
-            e.add_field(name=f"Total Suggestion Results", value="\n".join(total_results), inline=False)
-
-            event.reply(type=4, embeds=[e], flags=(1 << 6))
-
-            return
+            return event.reply(type=InteractionCallbackType.UPDATE_MESSAGE, components=components, flags=MessageFlags.IS_COMPONENTS_V2)

@@ -1,0 +1,38 @@
+services:
+  bot:
+    image: "ghcr.io/thecavern/cavernbot:latest"
+    restart: always
+    env_file:
+      - .env
+    # If you're not a fan of .env's ig...
+    #    environment:
+    #      - DISCORD_TOKEN="`'https://discord.dev'`"
+    #      - DB_DATABASE=cavernbot
+    #      - DB_USERNAME=cavernbot
+    #      - DB_PASSWORD=SuperSecurePassword...OrNot?I'mJustADeveloper?
+    #      - DB_HOST=mariadb
+    #      - DB_PORT=3306
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      # Assets for graphs and stuff
+      - "./assets:/app/assets"
+      # Configs for obvious reasons...
+      - "./config:/app/config"
+
+  # Comment this out if you have a prod server to not waste space and resources :D
+  mariadb:
+    image: mariadb:latest
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD="YouKnow...ICan'tStartThisContainerWithoutARootPassword...GoodLuckGuessingThis1"
+      - MARIADB_DATABASE=cavernbot
+      - MARIADB_PASSWORD=SuperSecurePassword...OrNot?I'mJustADeveloper?
+      - MARIADB_USER=cavernbot
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
