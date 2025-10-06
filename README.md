@@ -1,7 +1,7 @@
 # CaverBot
 Note that this readme is a WIP. Tired me needed to put stuff in here though. THANKS TIRED ME!
 
-Sidenote: When this doesn't get updated in a week, yell at me. `@thatrandojustin` on discord.
+***Sidenote: When this doesn't get updated in a week, yell at me. `@thatrandojustin` on discord.***
 
 ## Features
 * Suggestions
