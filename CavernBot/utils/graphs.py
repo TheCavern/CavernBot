@@ -124,8 +124,10 @@ def suggestion_user_stats(user_id):
               zorder=1)  # fully opaque
 
     # Plot stacked bars
-    bars1 = ax.bar(x, upvotes, width, label='Upvotes', color=colors[1], alpha=0.7, zorder=1, edgecolor='black', linewidth=1.5)
-    bars2 = ax.bar(x, downvotes, width, bottom=upvotes, label='Downvotes', color=colors[0], alpha=0.7, zorder=1, edgecolor='black', linewidth=1.5)
+    bars1 = ax.bar(x, downvotes, width, label='Downvotes', color=colors[1], alpha=0.7, zorder=1, edgecolor='black',
+                   linewidth=1.5)
+    bars2 = ax.bar(x, upvotes, width, bottom=downvotes, label='Upvotes', color=colors[0], alpha=0.7, zorder=1,
+                   edgecolor='black', linewidth=1.5)
 
     # Function to add outlined text
     def add_label(ax, x_pos, y_pos, text, color):
@@ -136,9 +138,9 @@ def suggestion_user_stats(user_id):
 
     for i in range(len(suggestion_ids)):
         # Bottom segment
-        add_label(ax, x[i], upvotes[i] / 2, str(upvotes[i]), color='#f24024')
+        add_label(ax, x[i], downvotes[i] / 2, str(downvotes[i]), color='#f24024')
         # Top segment
-        add_label(ax, x[i], upvotes[i] + downvotes[i] / 2, str(downvotes[i]), color='#1df086')
+        add_label(ax, x[i], downvotes[i] + upvotes[i] / 2, str(upvotes[i]), color='#1df086')
 
     # Labels, title, legend
     ax.set_xticks(x)

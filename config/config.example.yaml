@@ -6,6 +6,7 @@ bot:
   plugins:
     - CavernBot.plugins.core
     - CavernBot.plugins.suggestions
+    - CavernBot.plugins.control
 
 intents: 515
 
