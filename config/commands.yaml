@@ -52,5 +52,9 @@ commands:
             type: 4
             required: true
             autocomplete: false
-    message: {}
+    message:
+      - name: "Update Suggestion"
+        default_member_permissions: 8
+        integration_types: [ 0 ]
+        contexts: [ 0 ]
     user: {}

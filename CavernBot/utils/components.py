@@ -13,6 +13,15 @@ separator_small = SeparatorComponent(spacing=SeparatorSpacingSize.SMALL)
 separator_large = SeparatorComponent(spacing=SeparatorSpacingSize.LARGE)
 separator_none = SeparatorComponent(spacing=SeparatorSpacingSize.SMALL, divider=False)
 
+status_to_string = {
+    SuggestionStatus.APPROVED: "Approved",
+    SuggestionStatus.FORCED_APPROVED: "Force Approved",
+    SuggestionStatus.VOTING: "Voting",
+    SuggestionStatus.IMPLEMENTED: "Implemented",
+    SuggestionStatus.WORK_IN_PROGRESS: "Work in Progress",
+    SuggestionStatus.NOT_IMPLEMENTING: "Will not Implement",
+}
+
 def suggestion_info_ui_suggestion(event, suggestion, suggesting_user):
 
     vote_stats = list(
@@ -242,7 +251,7 @@ def suggestion_community_voting_complete(suggestion, user, outcome="Approved", o
 
     select_options = [
         SelectOption(label="Community Approved", description="The suggestion has been approved by the community", value=SuggestionStatus.APPROVED,
-                     default=(suggestion.status == SuggestionStatus.APPROVED)),
+                     default=(suggestion.status in [SuggestionStatus.APPROVED, SuggestionStatus.FORCED_APPROVED])),
         SelectOption(label="Will not Implement", description="This suggestion will not be implemented.", value=SuggestionStatus.NOT_IMPLEMENTING,
                      default=(suggestion.status == SuggestionStatus.NOT_IMPLEMENTING)),
         SelectOption(label="Implemented", description="Suggestion has been implemented!", value=SuggestionStatus.IMPLEMENTED,
@@ -265,13 +274,6 @@ def suggestion_community_voting_complete(suggestion, user, outcome="Approved", o
             content=f"-# Suggested on <t:{int(iso_to_datetime(suggestion.created_at).timestamp())}:F> (<t:{int(iso_to_datetime(suggestion.created_at).timestamp())}:R>)")
     ]
 
-    status_to_string = {
-        SuggestionStatus.APPROVED: "Approved",
-        SuggestionStatus.IMPLEMENTED: "Implemented",
-        SuggestionStatus.WORK_IN_PROGRESS: "Work in Progress",
-        SuggestionStatus.NOT_IMPLEMENTING: "Will not Implement",
-    }
-
     if outcome == "Approved":
         container_component.components.append(separator_small)
         container_component.components.append(
@@ -281,6 +283,8 @@ def suggestion_community_voting_complete(suggestion, user, outcome="Approved", o
                 ]
             )
         )
+
+    if suggestion.updated_by is not None:
         container_component.components.append(separator_none)
         container_component.components.append(TextDisplayComponent(
             content=f"-# Last updated by <@{suggestion.updated_by}> (`{event.member.user.username}`)\n-# [<t:{int(iso_to_datetime(suggestion.updated_at).timestamp())}:F> (<t:{int(iso_to_datetime(suggestion.updated_at).timestamp())}:R>)] {status_to_string.get(old_status)} → {status_to_string.get(suggestion.status)}")
@@ -407,3 +411,33 @@ def suggestion_denied_user_message(suggestion, reason=None):
     ]
 
     return components
+
+def force_update_suggestion(suggestion):
+
+    select_options = [
+        SelectOption(label="Force Approved", description="Move the suggestion to community approved.",
+                     value=SuggestionStatus.FORCED_APPROVED,
+                     default=(suggestion.status == SuggestionStatus.FORCED_APPROVED)),
+        SelectOption(label="Will not Implement", description="This suggestion will not be implemented.",
+                     value=SuggestionStatus.NOT_IMPLEMENTING,
+                     default=(suggestion.status == SuggestionStatus.NOT_IMPLEMENTING)),
+        SelectOption(label="Implemented", description="Suggestion has been implemented!",
+                     value=SuggestionStatus.IMPLEMENTED,
+                     default=(suggestion.status == SuggestionStatus.IMPLEMENTED)),
+        SelectOption(label="Work In Progress", description="Working on it, but not implemented yet.",
+                     value=SuggestionStatus.WORK_IN_PROGRESS,
+                     default=(suggestion.status == SuggestionStatus.WORK_IN_PROGRESS)),
+    ]
+
+    sm = SelectMenuComponent(custom_id=f"update_suggestion_{suggestion.id}")
+    sm.options = select_options
+
+    modal = MessageModal(title=f"Update Suggestion {suggestion.id}", custom_id=f"force_update_suggestion_{suggestion.id}")
+
+    modal.add_component(LabelComponent(
+        label=f"Select New Status (Currently {status_to_string.get(suggestion.status)})",
+        description="Set the new status for the suggestion.",
+        component=sm
+    ))
+
+    return modal

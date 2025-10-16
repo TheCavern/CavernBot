@@ -4,6 +4,7 @@ import gevent
 from disco.api.http import APIException
 from disco.bot import Plugin
 from disco.types.application import InteractionType, InteractionCallbackType
+from disco.types.base import snowflake
 
 from disco.types.message import ActionRow, SelectOption, SelectMenuComponent, \
     TextDisplayComponent, MessageFlags, \
@@ -17,8 +18,24 @@ from gevent.queue import JoinableQueue
 
 from CavernBot.utils.components import suggestion_info_ui_suggestion, suggestion_info_ui_user, pending_suggestion, \
     separator_large, separator_small, suggestion_create_modal, community_voting_suggestion, suggestion_deny, \
-    suggestion_denied_user_message, suggestion_community_voting_complete
+    suggestion_denied_user_message, suggestion_community_voting_complete, force_update_suggestion
 from CavernBot.utils.graphs import suggestion_stats, suggestion_user_stats
+
+def suggestion_type_to_channel(suggestion_type):
+    channel_mappings = {
+        SuggestionStatus.PENDING: cfg.discord.suggestions.pending_channel,
+        SuggestionStatus.DENIED: cfg.discord.suggestions.denied_channel,
+        SuggestionStatus.VOTING: cfg.discord.suggestions.vote_channel,
+        SuggestionStatus.APPROVED: cfg.discord.suggestions.approved_channel,
+        SuggestionStatus.COMMUNITY_DENIED: cfg.discord.suggestions.denied_channel,
+        SuggestionStatus.IMPLEMENTED: cfg.discord.suggestions.implemented_channel,
+        SuggestionStatus.FORCED_DENIED: cfg.discord.suggestions.denied_channel,
+        SuggestionStatus.FORCED_APPROVED: cfg.discord.suggestions.approved_channel,
+        SuggestionStatus.NOT_IMPLEMENTING: cfg.discord.suggestions.not_implementing_channel,
+        SuggestionStatus.WORK_IN_PROGRESS: cfg.discord.suggestions.wip_channel,
+    }
+
+    return channel_mappings.get(suggestion_type, None)
 
 class Vote:
     suggestion = None
@@ -86,6 +103,46 @@ class SuggestionsPlugin(Plugin):
                     gevent.sleep(random.randrange(1, 3))
                     self.vote_queue.task_done()
         self.log.info("Vote Worker Shutting Down.")
+
+    def update_suggestion_message(self, event, suggestion, new_status, old_status):
+        outcome = "Approved" if new_status in [SuggestionStatus.FORCED_APPROVED, SuggestionStatus.IMPLEMENTED,
+                                               SuggestionStatus.WORK_IN_PROGRESS] else "Rejected"
+
+        user = self.client.api.users_get(suggestion.user_id)
+        components = suggestion_community_voting_complete(suggestion, user, outcome=outcome, old_status=old_status,
+                                                          event=event)
+        channel_id, message_id = suggestion.message.split("/")
+
+        vote_graph = suggestion_stats(suggestion_id=suggestion.id)
+
+        # What if someone updated their config? Cool, it'll just not update, and go to the else statement
+        if (suggestion_type_to_channel(new_status) == suggestion_type_to_channel(old_status)) and snowflake(channel_id) == suggestion_type_to_channel(new_status):
+            event.reply(type=InteractionCallbackType.UPDATE_MESSAGE, components=components,
+                        attachments = [(f"final_graph_{suggestion.id}.png", vote_graph.getvalue())], flags=MessageFlags.IS_COMPONENTS_V2)
+
+            vote_graph.close()
+            return None
+
+        else:
+            event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content=f"Suggestion `{suggestion.id}` Has been updated!", flags=MessageFlags.EPHEMERAL)
+            # Delete the old message
+            self.client.api.channels_messages_delete(channel_id, message_id)
+            # Grab new channel
+            new_channel = suggestion_type_to_channel(new_status)
+            # Send new message
+
+            vote_graph = suggestion_stats(suggestion_id=suggestion.id)
+
+            new_message = self.client.api.channels_messages_create(new_channel, components=components,
+                                                                   attachments = [(f"final_graph_{suggestion.id}.png", vote_graph.getvalue())], flags=MessageFlags.IS_COMPONENTS_V2)
+
+            # Close buffer
+            vote_graph.close()
+            # Update suggestion's message in DB
+            suggestion.message = f"{new_message.channel.id}/{new_message.id}"
+            suggestion.save()
+
+            return None
 
     # Workers Schedule
     @Plugin.schedule(60)
@@ -460,6 +517,64 @@ class SuggestionsPlugin(Plugin):
             suggestion.save()
 
             user = self.client.api.users_get(suggestion.user_id)
-            components = suggestion_community_voting_complete(suggestion, user, outcome="Approved", old_status=old_status, event=event)
+            return self.update_suggestion_message(event, suggestion, new_status, old_status)
+            # components = suggestion_community_voting_complete(suggestion, user, outcome="Approved", old_status=old_status, event=event)
+            #
+            # return event.reply(type=InteractionCallbackType.UPDATE_MESSAGE, components=components, flags=MessageFlags.IS_COMPONENTS_V2)
 
-            return event.reply(type=InteractionCallbackType.UPDATE_MESSAGE, components=components, flags=MessageFlags.IS_COMPONENTS_V2)
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.APPLICATION_COMMAND and e.data.name == "Update Suggestion")
+    def force_update_suggestion(self, event):
+
+        is_staff = (len(set(event.member.roles) & set(
+            Constants.STAFF_ROLES)) > 0)
+
+        if not is_staff:
+            return send_you_dont_have_the_right(event)
+
+        suggestion_message = list(event.data.resolved.messages.values())[0]
+
+        search_query = f"{suggestion_message.channel_id}/{suggestion_message.id}"
+
+        suggestion = Suggestion.get_or_none(message=search_query)
+
+        if not suggestion:
+            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE, content="`ERROR`: No suggestion found linked to this message.", flags=MessageFlags.EPHEMERAL)
+
+        return event.reply(type=InteractionCallbackType.MODAL, modal=force_update_suggestion(suggestion))
+
+    @Plugin.listen("InteractionCreate", conditional=lambda e: e.type == InteractionType.MODAL_SUBMIT and e.data.custom_id.startswith("force_update_suggestion_"))
+    def force_update_suggestion_modal(self, event):
+
+        is_staff = (len(set(event.member.roles) & set(
+            Constants.STAFF_ROLES)) > 0)
+
+        if not is_staff:
+            return send_you_dont_have_the_right(event)
+
+        try:
+            suggestion_id = int(event.data.custom_id.replace("force_update_suggestion_", ""))
+        except ValueError:
+            self.log.error(f"Unable to determine Suggestion ID from modal custom ID: {event.data.custom_id}")
+            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        flags=MessageFlags.EPHEMERAL, content=f"`ERROR`: No suggestion found with id `{event.data.custom_id}`.",)
+
+        suggestion = Suggestion.get_or_none(id=suggestion_id)
+
+        if not suggestion:
+            event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        flags=MessageFlags.EPHEMERAL, content=f"`ERROR`: No suggestion found with id `{suggestion_id}`.",)
+
+
+        new_status = event.data.components[0].component.values[0]
+        old_status = suggestion.status
+
+        if new_status == suggestion.status:
+            return event.reply(type=InteractionCallbackType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        flags=MessageFlags.EPHEMERAL, content=f"`ERROR`: Status selected is the same as current status.")
+
+        suggestion.status = new_status
+        suggestion.updated_by = event.member.id
+        suggestion.updated_at = datetime_utc()
+        suggestion.save()
+
+        return self.update_suggestion_message(event, suggestion, new_status, old_status)

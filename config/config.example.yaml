@@ -25,6 +25,12 @@ discord:
     pending_channel: 0000000000000000000
     # Where approved suggestions go
     approved_channel: 0000000000000000000
+    # Where implemented suggestions go
+    implemented_channel: 0000000000000000000
+    # Where "not implementing" suggestions go
+    not_implementing_channel: 0000000000000000000
+    # Where Work In Progress suggestions go
+    wip_channel: 0000000000000000000
     # Where Denied suggestions go
     denied_channel: 0000000000000000000
     # Where voting happens.
